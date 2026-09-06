@@ -1,0 +1,240 @@
+[
+  {
+    "type": "heading",
+    "defaultValue": "Roots"
+  },
+  {
+    "type": "text",
+    "defaultValue": "Nothing here is required. Leave a field blank and Roots keeps using what it measured for you."
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "You"
+      },
+      {
+        "type": "text",
+        "defaultValue": "Age sets a starting ceiling for your heart-rate zones. Once Roots has seen you actually reach a higher rate, it uses the real number instead — this only fills the gap in the first weeks."
+      },
+      {
+        "type": "input",
+        "messageKey": "age",
+        "label": "Age",
+        "attributes": {
+          "type": "number",
+          "min": 10,
+          "max": 100,
+          "placeholder": "optional"
+        }
+      },
+      {
+        "type": "select",
+        "messageKey": "sex",
+        "label": "Sex",
+        "defaultValue": "0",
+        "options": [
+          {
+            "label": "Prefer not to say",
+            "value": "0"
+          },
+          {
+            "label": "Female",
+            "value": "1"
+          },
+          {
+            "label": "Male",
+            "value": "2"
+          }
+        ]
+      },
+      {
+        "type": "select",
+        "messageKey": "units",
+        "label": "Units",
+        "defaultValue": "0",
+        "options": [
+          {
+            "label": "Metric (kg)",
+            "value": "0"
+          },
+          {
+            "label": "Imperial (lb)",
+            "value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Effort"
+      },
+      {
+        "type": "text",
+        "defaultValue": "Where work starts counting, as a percentage of your heart-rate reserve. 70% is the top of zone 2, so a commute and a day at a desk count for nothing. Lower it if heavy lifting — where the peaks are short — reads as zero on days that cost you."
+      },
+      {
+        "type": "slider",
+        "messageKey": "hrrZ3",
+        "label": "Work starts at",
+        "defaultValue": 70,
+        "min": 55,
+        "max": 85,
+        "step": 5
+      },
+      {
+        "type": "input",
+        "messageKey": "stepGoal",
+        "label": "Step goal",
+        "attributes": {
+          "type": "number",
+          "min": 0,
+          "max": 60000,
+          "placeholder": "blank = your average"
+        }
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Tracking"
+      },
+      {
+        "type": "text",
+        "defaultValue": "One number you want to watch right now. It gets its own card with a weekly average and a 60-day graph. Pick None to hide the card."
+      },
+      {
+        "type": "select",
+        "messageKey": "metric",
+        "label": "Track",
+        "defaultValue": "0",
+        "options": [
+          {
+            "label": "None",
+            "value": "0"
+          },
+          {
+            "label": "Weight",
+            "value": "1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Cards"
+      },
+      {
+        "type": "text",
+        "defaultValue": "Turn off what you do not read. Headroom always stays. Fewer cards is the point of the app, not a compromise."
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardDrain",
+        "label": "Night heart rate",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardRecharge",
+        "label": "Sleep",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardTrend",
+        "label": "Trend",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardHrv",
+        "label": "HRV",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardSteps",
+        "label": "Steps",
+        "defaultValue": true
+      },
+      {
+        "type": "toggle",
+        "messageKey": "cardData",
+        "label": "Data",
+        "defaultValue": true
+      },
+      {
+        "type": "text",
+        "defaultValue": "The Metric card follows the Track setting above, so there is no way to switch on an empty card."
+      }
+    ]
+  },
+  {
+    "type": "section",
+    "items": [
+      {
+        "type": "heading",
+        "defaultValue": "Appearance"
+      },
+      {
+        "type": "toggle",
+        "messageKey": "dark",
+        "label": "Dark",
+        "defaultValue": true
+      },
+      {
+        "type": "select",
+        "messageKey": "accent",
+        "label": "Accent",
+        "defaultValue": "0",
+        "options": [
+          {
+            "label": "Cyan",
+            "value": "0"
+          },
+          {
+            "label": "Green",
+            "value": "1"
+          },
+          {
+            "label": "Yellow",
+            "value": "2"
+          },
+          {
+            "label": "Orange",
+            "value": "3"
+          },
+          {
+            "label": "Magenta",
+            "value": "4"
+          },
+          {
+            "label": "Blue",
+            "value": "5"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "defaultValue": "The accent applies to the dark theme only, and only on colour watches. It never means anything: the same card is the same colour on a bad day."
+      }
+    ]
+  },
+  {
+    "type": "submit",
+    "defaultValue": "Save"
+  }
+]

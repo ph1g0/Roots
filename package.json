@@ -1,0 +1,46 @@
+{
+    "author": "ph1g0",
+    "dependencies": {
+        "@rebble/clay": "^1.1.0"
+    },
+    "keywords": [],
+    "name": "roots",
+    "pebble": {
+        "capabilities": [
+            "location",
+            "configurable",
+            "health"
+        ],
+        "displayName": "Roots",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "accent",
+            "dark",
+            "units",
+            "sex",
+            "metric",
+            "stepGoal",
+            "age",
+            "hrrZ3",
+            "cardDrain",
+            "cardRecharge",
+            "cardTrend",
+            "cardHrv",
+            "cardSteps",
+            "cardData"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "emery"
+        ],
+        "uuid": "3a12db75-d441-4b7f-8c10-36abc91f2dc9",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
