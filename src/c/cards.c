@@ -24,9 +24,13 @@
 #define TOP_H   34    // chevron + title
 #define BOT_H   14    // chevron
 // Detail views scroll under an opaque header, so their content starts lower
-// than a card front's does. At TOP_H the first row sat six pixels under the
-// rule and read as part of the title.
-#define DET_TOP (TOP_H + 12)
+// than a card front's does.
+//
+// The title text box is LINE_H tall from y = 9, so it ends at 31. The rule
+// went in at TOP_H - 7 = 27, which put it through the descenders rather than
+// under them. It needs to clear the box, not the nominal header height.
+#define DET_RULE_Y 37                 // 6 px of air under the title box
+#define DET_TOP    (DET_RULE_Y + 7)   // the original gap; only the rule moved
 #define BAR_ROW 26    // label line + bar
 
 // bpm x10 between this week's mean and the long-term mean before the night
@@ -95,9 +99,9 @@ static void title(GContext *ctx, GRect b, const char *t) {
 // the header, and a transparent title let rows slide through the letters.
 static void title_bar(GContext *ctx, GRect b, const char *t) {
   graphics_context_set_fill_color(ctx, C_BG);
-  graphics_fill_rect(ctx, GRect(0, 0, b.size.w, TOP_H - 6), 0, GCornerNone);
+  graphics_fill_rect(ctx, GRect(0, 0, b.size.w, DET_RULE_Y), 0, GCornerNone);
   graphics_context_set_stroke_color(ctx, C_TRACK);
-  graphics_draw_line(ctx, GPoint(0, TOP_H - 7), GPoint(b.size.w, TOP_H - 7));
+  graphics_draw_line(ctx, GPoint(0, DET_RULE_Y), GPoint(b.size.w, DET_RULE_Y));
   title(ctx, b, t);
 }
 

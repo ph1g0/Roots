@@ -116,9 +116,11 @@ colour behind it.
         v                       SELECT for seven nights and sixty days
 ```
 
-Detail views scroll under an opaque header with a rule under it, and start at
-`DET_TOP` rather than `TOP_H` — twelve pixels lower, because a first row sitting
-six pixels under the rule reads as part of the title.
+Detail views scroll under an opaque header with a rule under it. `DET_RULE_Y`
+is 37, which clears the title's text box (`LINE_H` from y = 9, so it ends at
+31); the rule was at 27 and ran through the descenders. `DET_TOP` keeps the
+original seven-pixel gap below the rule — the problem was only ever where the
+rule sat, not how far the content was from it.
 
 - **All text is white** (labels light grey). Colour never carries a word:
   the figure, the values beside the bars, the rows in the detail are all
