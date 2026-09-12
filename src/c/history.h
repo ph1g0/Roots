@@ -29,6 +29,12 @@ typedef struct {
 uint16_t history_day_key(void);              // today, in the local calendar
 
 void history_load(void);                     // idempotent; called by the others
+
+// One-time repair of records written by older, buggier rules. Called once on
+// launch, guarded by HIST_SCRUB_VER. `max_sleep_min` is the longest sleep the
+// current reader would ever record; anything above it is dropped to "not
+// measured" rather than left to sit in the charts forever.
+void history_scrub(uint16_t max_sleep_min);
 void history_save(void);
 
 // Today's record, created if absent. Caller fills fields, then history_save().

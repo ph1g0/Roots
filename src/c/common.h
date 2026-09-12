@@ -20,6 +20,14 @@
 #define KEY_BACKFILL_VER       16   // int; bump BACKFILL_VER to make old blank records retry
 #define BACKFILL_VER           2
 #define KEY_HIST_SCHEMA        17   // int, layout version of the chunks below
+#define KEY_HIST_SCRUB_VER     19   // int; bump HIST_SCRUB_VER to re-run the pass
+// A record already written cannot be re-read once it falls out of Pebble
+// Health's seven-day minute buffer, so fixing a *writer* bug does nothing for
+// the rows it already wrote. This runs one pass over stored history and drops
+// values the new rules would never have produced. Bump it when a rule changes.
+//   1: sleep_min above MAX_NIGHT_MINUTES — the watch-in-its-box night that
+//      window_from_quiet filed as a 15-hour sleep (v0.8 and earlier).
+#define HIST_SCRUB_VER         1
 #define KEY_SETTINGS           18   // Settings blob, sent from the phone
 #define KEY_HIST_CHUNK0        20   // 20..24: DayRecord history, 18 records each
 #define HIST_CHUNKS            5

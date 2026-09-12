@@ -94,6 +94,21 @@ void history_load(void) {
   s_n = w;
 }
 
+void history_scrub(uint16_t max_sleep_min) {
+  history_load();
+  if (persist_exists(KEY_HIST_SCRUB_VER) &&
+      persist_read_int(KEY_HIST_SCRUB_VER) == HIST_SCRUB_VER) return;
+
+  bool dirty = false;
+  for (int i = 0; i < s_n; i++) {
+    // An impossible sleep figure is worse than a missing one: it sits in the
+    // chart looking like data and it drags the usual-sleep baseline with it.
+    if (s_rec[i].sleep_min > max_sleep_min) { s_rec[i].sleep_min = 0; dirty = true; }
+  }
+  if (dirty) history_save();
+  persist_write_int(KEY_HIST_SCRUB_VER, HIST_SCRUB_VER);
+}
+
 void history_save(void) {
   int done = 0;
   for (int c = 0; c < HIST_CHUNKS; c++) {

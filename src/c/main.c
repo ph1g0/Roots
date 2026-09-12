@@ -95,19 +95,22 @@ static void push_detail(void) {
   s_scroll = 0;
   window_stack_push(s_detail, true);
 }
-// SELECT opens the detail everywhere except the two cards that have an action
-// of their own: HRV starts a test, Metric opens the entry screen. On both, the
-// detail moves to a long press.
+// SELECT opens the detail everywhere. HRV is the one exception: a test is the
+// point of that card, so SELECT starts one and the graph is on a long press.
+//
+// Metric used to work the same way, and it was wrong. Logging a weight is a
+// thing you do once a week; looking at the trend is what you open the card
+// for, and it was the one action buried behind a long press. Swapped.
 static void metric_saved(void) { redraw(); }
 
 static void select_action(void) {
-  if (s_card == CARD_HRV)         hrv_show();
-  else if (s_card == CARD_METRIC) metric_entry_show(metric_saved);
-  else                            push_detail();
+  if (s_card == CARD_HRV) hrv_show();
+  else                    push_detail();
 }
 static void open_detail(ClickRecognizerRef r, void *c) { select_action(); }
 static void long_select(ClickRecognizerRef r, void *c) {
-  if (s_card == CARD_HRV || s_card == CARD_METRIC) push_detail();
+  if (s_card == CARD_HRV)         push_detail();
+  else if (s_card == CARD_METRIC) metric_entry_show(metric_saved);
 }
 // Long-press UP flips dark/light. Dark reads better under a two-second
 // backlight; light reads better in direct sun on this display.

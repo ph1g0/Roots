@@ -584,6 +584,11 @@ static void backfill(void) {
   uint16_t today = history_day_key();
   time_t day0 = time_start_of_today();
 
+  // Repair before reading. The sleep-window fix only changed what gets
+  // *written*, so the 15-hour night an older build already recorded would have
+  // sat in the chart until it aged out of the 90-day window.
+  history_scrub(MAX_NIGHT_MINUTES);
+
   int ver = persist_exists(KEY_BACKFILL_VER) ? persist_read_int(KEY_BACKFILL_VER) : 0;
   if (ver != BACKFILL_VER) {
     for (int k = 1; k <= BACKFILL_DAYS; k++) {

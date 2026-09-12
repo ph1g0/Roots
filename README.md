@@ -158,7 +158,7 @@ things:
 | `src/c/main.c` | Lifecycle, card navigation, detail window |
 | `src/c/cards.c` | All drawing: six main cards, detail views, the chart helpers |
 | `src/c/headroom.c` | Night window, overnight RHR, recovered floor, the score |
-| `src/c/history.c` | One record per day in persistent storage; source of the floor |
+| `src/c/history.c` | One record per day in persistent storage; source of the floor; the scrub pass |
 | `src/c/hrv.c` | On-demand HRV test window and RMSSD/SDNN maths |
 | `src/c/theme.c` | Palette, per-card colours, dark/light, persisted |
 | `src/c/touch.c` | Touch navigation opt-in, optional gesture recognizers |
@@ -170,25 +170,29 @@ gone. Delete them.
 ## Navigation
 
 ```
-UP / DOWN        move between the cards you have left switched on
-SELECT           open the detail for the card you are on
-SELECT (HRV)     start a test; long-press SELECT for the HRV graph instead
-SELECT (Metric)  log today's value; long-press SELECT for the graph instead
-long-press UP    dark / light theme
-BACK             leave the detail (or the app, from a card)
-UP / DOWN        scroll, inside a detail view
+UP / DOWN             move between the cards you have left switched on
+SELECT                open the detail for the card you are on
+SELECT (HRV)          start a test; long-press SELECT for the HRV graph
+long-press SELECT     on Metric: log today's value
+long-press UP         dark / light theme
+BACK                  leave the detail (or the app, from a card)
+UP / DOWN             scroll, inside a detail view
 ```
+
+Metric was the other way round until v1.0 — SELECT logged a value, the graph
+was behind a long press. Logging a weight is a weekly act and looking at the
+trend is why you open the card, so the common one had the buried gesture.
 
 Cards other than Headroom can be turned off on the phone, and Metric is off
 until you pick something to track, so most people see fewer than this.
 
 | Card | Figure | Pill | Line | Behind SELECT |
 |---|---|---|---|---|
-| **Headroom** | 0–10 in a ring | the band | what the band means | the subtraction, confidence, 30 days |
-| **Night heart rate** | ± bpm vs your floor | your floor, nights it came from | what it cost | 60 days, week vs long-term, read diagnostics |
-| **Sleep** | hours asleep | your usual, window | what it cost | night curve, in bed / awake / sessions, 30 days |
+| **Headroom** | 0–10 in a ring | the band | what the band means | the subtraction, the four readings behind it, 30 days |
+| **Night heart rate** | ± bpm vs your floor | your floor, nights it came from | what it cost | 7 nights of bars, week vs long-term, read diagnostics, 60 days |
+| **Sleep** | hours asleep | your usual, window | what it cost | 7 nights of bars, in bed / awake / sessions, night curve, 30 days |
 | **HRV** | last test, ms | recent average | not part of the score | 30 days, SDNN, beats dropped |
-| **Steps** | steps today | your goal, or your average day | over / to go | 7 days, today's HR curve and zones |
+| **Steps** | steps today | your goal, or your average day | over / to go | 7 days of steps |
 | **Metric** | last value | change over four weeks | not part of the score | 60 days, weekly averages |
 
 There is no prompt on launch. The app opens on the number.
@@ -313,6 +317,14 @@ in its box produced a 15-hour first night that then sat in every chart. Only
 `HealthActivitySleep` is recorded as sleep now, and only between 3 and 14
 hours.
 
+**Records already written are repaired, not just prevented.** A writer fix does
+nothing for the rows an older build already wrote, and a night older than seven
+days cannot be re-read — Pebble Health's minute buffer is gone by then. So
+`history_scrub()` runs one pass on launch, guarded by `HIST_SCRUB_VER`, and
+drops stored values the current rules could never have produced. Version 1
+clears any `sleep_min` above 14 hours. Bump the constant when a rule changes
+and the pass runs again.
+
 **4. The recovered floor.** The mean of the lowest 30% of readable nights in
 the last 60 days, read from stored `DayRecord`s from yesterday backwards, so
 tonight is never part of what tonight is measured against.
@@ -374,8 +386,9 @@ app measures rather than assumes:
 
 For a 68 bpm waking rest and a 185 bpm ceiling that puts zone 3 at 150, zone
 4 at 162 and zone 5 at 173. Both figures, and the resulting zone floors, are
-on the Steps detail so the threshold can be checked against whatever else you
-use.
+computed on every open, but as of v1.0 they are not drawn on any card — they
+were on the Steps detail, which is the wrong place for a heart-rate readout.
+They need a home, or removing outright.
 
 **Why Drain read 433 minutes before v0.8.** (Historical: the drain no longer
 reaches the score at all, but the zone thresholds it produced are still what
@@ -583,9 +596,9 @@ budget. That is why the tracked metric is one at a time.
   whole redesign unwinds. Check after a full training block.
 - **Zone floors on real data** — `HRR_Z3` at 70% of reserve is a reasonable
   first guess, not a measured one. The Steps detail shows the waking rest, the
-  ceiling and the resulting floors precisely so they can be checked against a
-  chest strap before the constant is trusted. It no longer touches the score,
-  so a wrong value is now cosmetic rather than load-bearing.
+  ceiling and the resulting floors are computed but no longer drawn anywhere:
+  they were on the Steps detail and did not belong there. They need a home
+  before `HRR_Z3` can be checked against a chest strap.
 - **Touch** — see above.
 - **Wake-up** — the score is computed on open. A `wakeup` at your usual rise
   time could pre-compute it and drop a timeline pin.

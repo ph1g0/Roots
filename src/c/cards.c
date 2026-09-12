@@ -83,6 +83,16 @@ static void title(GContext *ctx, GRect b, const char *t) {
   txt(ctx, t, F_BODY_B, GRect(0, 9, b.size.w, LINE_H), GTextAlignmentCenter, GTextOverflowModeTrailingEllipsis);
 }
 
+// Same title, but on an opaque band. A detail view scrolls its content under
+// the header, and a transparent title let rows slide through the letters.
+static void title_bar(GContext *ctx, GRect b, const char *t) {
+  graphics_context_set_fill_color(ctx, C_BG);
+  graphics_fill_rect(ctx, GRect(0, 0, b.size.w, TOP_H - 6), 0, GCornerNone);
+  graphics_context_set_stroke_color(ctx, C_TRACK);
+  graphics_draw_line(ctx, GPoint(0, TOP_H - 7), GPoint(b.size.w, TOP_H - 7));
+  title(ctx, b, t);
+}
+
 // The big figure with a unit hanging off its baseline. Always white: text
 // carries the meaning, so it gets the most contrast the display has. The
 // card's colour lives in the bars and rings under it, never in the words.
@@ -546,39 +556,61 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
       y = row_kv(ctx, y, w, "Clean readings", v);
       y = row_kv(ctx, y, w, "Window from", window_source_label(n->window_source));
     } else {
-      // The arithmetic, in the order it happens. This is the card that has to
-      // answer "where did that number come from", so it shows the subtraction
-      // rather than a pair of sub-scores that have to be reassembled.
+      // The arithmetic, in the order it happens, then the readings it came
+      // from. v1.0 shipped with only the deductions, labelled "Night heart
+      // rate 0.0" — which reads as "your heart rate is zero" rather than "your
+      // heart rate cost you nothing". Owing nothing is the good case and it
+      // has to look like it.
       y = row_kv(ctx, y, w, "Start of day", "10");
-      headroom_fmt_x10(v, sizeof v, -(int)n->rhr_cost_x10);
-      y = bar_row(ctx, y, w, "Night heart rate", v, n->rhr_cost_x10, -1, C_DRAIN);
+      headroom_fmt_x10(v, sizeof v, n->rhr_cost_x10);
+      strncat(v, " off", sizeof v - strlen(v) - 1);
+      y = bar_row(ctx, y, w, "Heart rate", v, n->rhr_cost_x10, -1, C_DRAIN);
       if (n->sleep_known) {
-        headroom_fmt_x10(v, sizeof v, -(int)n->sleep_cost_x10);
+        headroom_fmt_x10(v, sizeof v, n->sleep_cost_x10);
+        strncat(v, " off", sizeof v - strlen(v) - 1);
         y = bar_row(ctx, y, w, "Sleep", v, n->sleep_cost_x10, -1, C_SLEEP);
       } else {
         y = row_kv(ctx, y, w, "Sleep", "not measured");
       }
-      y = pill(ctx, y + 2, w, "TEN, LESS WHAT YOU OWE", "");
       headroom_fmt_x10(v, sizeof v, h->score_x10);
-      y = row_kv(ctx, y, w, "Headroom", v);
-      snprintf(v, sizeof v, "%s \xc2\xb7 %u nights", confidence_label(n->confidence), n->nights_learned);
+      y = pill(ctx, y + 2, w, "HEADROOM", v);
+
+      // The four numbers the two deductions were computed from. Without these
+      // the card asserts an answer instead of showing its working.
+      if (n->night_rhr_x10) { fmt_x10(v, sizeof v, n->night_rhr_x10); strncat(v, " bpm", sizeof v - strlen(v) - 1);
+                              y = row_kv(ctx, y, w, "Last night", v); }
+      if (n->floor_rhr_x10) { fmt_x10(v, sizeof v, n->floor_rhr_x10); strncat(v, " bpm", sizeof v - strlen(v) - 1);
+                              y = row_kv(ctx, y, w, "Your floor", v); }
+      if (n->sleep_known)   { fmt_hm(v, sizeof v, n->sleep_minutes);  y = row_kv(ctx, y, w, "Slept", v); }
+      if (n->baseline_sleep_min) { fmt_hm(v, sizeof v, n->baseline_sleep_min); y = row_kv(ctx, y, w, "Your usual", v); }
+
+      if (n->floor_nights) snprintf(v, sizeof v, "%s \xc2\xb7 floor from %u nights",
+                                    confidence_label(n->confidence), n->floor_nights);
+      else                 snprintf(v, sizeof v, "%s \xc2\xb7 floor still learning",
+                                    confidence_label(n->confidence));
       y = row_kv(ctx, y, w, "Confidence", v);
-      y = line(ctx, y + 4, w, 4, "Only last night moves it. Nothing you do today is subtracted, and nothing is added back.");
+      y = line(ctx, y + 4, w, 4, "Ten, less what you owe. At or under your floor owes nothing, which is why a good night shows 0.0 off.");
 
       int cn = hist_series(s1, 30, H_SCORE);
       y = vbars(ctx, y + 6, w, "Headroom, 30 days", s1, cn, 0, C_ACCENT, 56, 0, 0, SCORE_FULL_X10);
     }
 
   } else if (card == CARD_NIGHT_HR) {
-    int cn = hist_series(s1, 60, H_RHR);
-    y = vbars(ctx, y, w, "Night heart rate, 60 days", s1, cn, n->floor_rhr_x10, C_DRAIN, 70, 60, -1, -1);
-    y = line(ctx, y + 2, w, 2, "Dashed line: your recovered floor.");
+    // The day-by-day bars the card fronts used to carry. They were never the
+    // problem — showing only three of them on the front was. Seven here, then
+    // sixty in the chart below.
+    int base = n->floor_rhr_x10 ? n->floor_rhr_x10 : 550;
+    for (int ago = 0; ago < 7; ago++) {
+      const DayRecord *r = history_get(ago);
+      int val = (ago == 0 && n->night_rhr_x10) ? n->night_rhr_x10 : (r ? r->rhr_x10 : 0);
+      if (val) fmt_x10(v, sizeof v, val); else snprintf(v, sizeof v, "--");
+      y = bar_row(ctx, y, w, ago == 0 ? "Last night" : ago_label(ago), v,
+                  val ? frac_pct((base + 80) - val, 0, 160) : 0, 50, C_DRAIN);
+    }
+    y = line(ctx, y + 2, w, 2, "Longer bar = lower night. Tick = your floor.");
 
-    if (n->night_rhr_x10) { fmt_x10(v, sizeof v, n->night_rhr_x10); strncat(v, " bpm", sizeof v - strlen(v) - 1); }
-    else snprintf(v, sizeof v, "--");
-    y = row_kv(ctx, y, w, "Last night", v);
     fmt_x10(v, sizeof v, n->floor_rhr_x10); strncat(v, " bpm", sizeof v - strlen(v) - 1);
-    y = row_kv(ctx, y, w, "Your floor", v);
+    y = row_kv(ctx, y + 2, w, "Your floor", v);
 
     // What the Trend card used to be. It is one comparison about night heart
     // rate, so it lives with night heart rate.
@@ -606,19 +638,34 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
     y = row_kv(ctx, y, w, "No HR/range/jump", v);
     y = line(ctx, y + 4, w, 3, "If clean readings is low, the largest count above is the rule that dropped them.");
 
+    int cn = hist_series(s1, 60, H_RHR);
+    y = vbars(ctx, y + 6, w, "Night heart rate, 60 days", s1, cn, n->floor_rhr_x10, C_DRAIN, 70, 60, -1, -1);
+    y = line(ctx, y + 2, w, 2, "Dashed line: your recovered floor.");
+
   } else if (card == CARD_SLEEP) {
-    y = area(ctx, y, w, "Through the night", n->curve, floor_bpm, C_SLEEP, 70);
+    int usual = n->baseline_sleep_min;
+    int hi = usual ? (usual * 5) / 4 : 600;
+    for (int ago = 0; ago < 7; ago++) {
+      const DayRecord *r = history_get(ago);
+      int val = (ago == 0 && n->sleep_known) ? n->sleep_minutes : (r ? r->sleep_min : 0);
+      if (val) fmt_hm(v, sizeof v, (uint16_t)val); else snprintf(v, sizeof v, "--");
+      y = bar_row(ctx, y, w, ago == 0 ? "Last night" : ago_label(ago), v,
+                  val ? frac_pct(val, 0, hi) : 0, usual ? frac_pct(usual, 0, hi) : -1, C_SLEEP);
+    }
+    y = line(ctx, y + 2, w, 2, "Tick = your usual.");
+
     if (n->sleep_known) {
-      fmt_hm(v, sizeof v, n->sleep_span_min);                      y = row_kv(ctx, y, w, "In bed", v);
+      fmt_hm(v, sizeof v, n->sleep_span_min);                      y = row_kv(ctx, y + 2, w, "In bed", v);
       { int awake = (int)n->sleep_span_min - (int)n->sleep_minutes;
         snprintf(v, sizeof v, "%d min", awake < 0 ? 0 : awake); }
       y = row_kv(ctx, y, w, "Awake", v);
       snprintf(v, sizeof v, "%u", n->sleep_sessions);              y = row_kv(ctx, y, w, "Sessions", v);
     } else {
-      y = line(ctx, y, w, 4, "Pebble Health reported no sleep session. A still stretch is enough to read heart rate from, but it is not sleep, so none was recorded.");
+      y = line(ctx, y + 2, w, 4, "Pebble Health reported no sleep session. A still stretch is enough to read heart rate from, but it is not sleep, so none was recorded.");
     }
+    y = area(ctx, y + 4, w, "Through the night", n->curve, floor_bpm, C_SLEEP, 64);
     int cn = hist_series(s1, 30, H_SLEEP);
-    y = vbars(ctx, y + 6, w, "Sleep, 30 days", s1, cn, n->baseline_sleep_min, C_SLEEP, 56, 180, -1, -1);
+    y = vbars(ctx, y + 4, w, "Sleep, 30 days", s1, cn, n->baseline_sleep_min, C_SLEEP, 56, 180, -1, -1);
     y = line(ctx, y + 2, w, 2, "Dashed line: your usual.");
 
   } else if (card == CARD_HRV) {
@@ -651,7 +698,7 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
     y = row_kv(ctx, y, w, "Entries", v);
     y = line(ctx, y + 4, w, 4, "Weekly averages, not day to day: most of the daily movement is water.");
 
-  } else {  // CARD_STEPS — today's movement, and the effort behind it
+  } else {  // CARD_STEPS — seven days, and nothing that is not steps
     time_t day0 = time_start_of_today();
     int32_t mark = settings()->step_goal ? settings()->step_goal : d->steps_typical;
     int32_t hi = mark ? (mark * 13) / 10 : 1;
@@ -665,21 +712,13 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
       y = bar_row(ctx, y, w, ago_label(i), v, frac_pct((int)vals[i], 0, (int)hi),
                   mark ? frac_pct((int)mark, 0, (int)hi) : -1, C_STEPS);
     }
-    // Today's effort, measured but never subtracted. It moved here from the
-    // old Drain card because it describes the day, not the night.
-    y = area(ctx, y + 4, w, "Heart rate since waking", d->curve, d->rest_bpm, C_DRAIN, 60);
-    if (d->z3_bpm) {
-      snprintf(v, sizeof v, "%u min", d->hard_minutes);        y = row_kv(ctx, y, w, "Above zone 2", v);
-      snprintf(v, sizeof v, "%u/%u/%u", d->min_z3, d->min_z4, d->min_z5);
-      y = row_kv(ctx, y, w, "Z3 / Z4 / Z5", v);
-      snprintf(v, sizeof v, "%u+ bpm", d->z3_bpm);             y = row_kv(ctx, y, w, "Counting starts", v);
-      snprintf(v, sizeof v, "%u bpm", d->rest_bpm);            y = row_kv(ctx, y, w, "Your waking rest", v);
+    if (mark) {
+      fmt_thousands(v, sizeof v, mark);
+      y = row_kv(ctx, y + 4, w, settings()->step_goal ? "Your goal" : "Your average day", v);
     }
-    if (d->max_hr) { snprintf(v, sizeof v, "%u bpm", d->max_hr); y = row_kv(ctx, y, w, "Peak today", v); }
-    y = line(ctx, y + 4, w, 4, "Shown, not charged. What a session cost is a question tonight's reading answers.");
   }
 
   int content = y + scroll + 10;
-  title(ctx, b, card_title(card));
+  title_bar(ctx, b, card_title(card));
   return content;
 }
