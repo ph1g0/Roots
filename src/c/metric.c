@@ -97,6 +97,18 @@ bool metric_avg(int from_days_ago, int to_days_ago, uint16_t *out) {
   return true;
 }
 
+int metric_recent(uint16_t *values, int *days_ago, int max, int within_days) {
+  int n = 0;
+  for (int ago = 0; ago <= within_days && n < max; ago++) {
+    uint16_t v;
+    if (!metric_get(ago, &v) || v == 0) continue;
+    values[n]   = v;
+    days_ago[n] = ago;
+    n++;
+  }
+  return n;
+}
+
 int metric_series(int *out, int days) {
   metric_load();
   if (days > METRIC_DAYS) days = METRIC_DAYS;

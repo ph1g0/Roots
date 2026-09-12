@@ -110,9 +110,15 @@ colour behind it.
    +3.1  bpm vs floor           the figure, Bitham 42 bold
   [ YOUR FLOOR 50.5        ]    the pill: one comparison, black on yellow
   [ LOWEST NIGHTS OF 18    ]
+   Last night          53.6     one bar: the current reading, tick = floor
+   ████████|█████
    3.1 off today's ten.         one plain line: what it cost, in points
-        v                       SELECT for sixty days and the read
+        v                       SELECT for seven nights and sixty days
 ```
+
+Detail views scroll under an opaque header with a rule under it, and start at
+`DET_TOP` rather than `TOP_H` — twelve pixels lower, because a first row sitting
+six pixels under the rule reads as part of the title.
 
 - **All text is white** (labels light grey). Colour never carries a word:
   the figure, the values beside the bars, the rows in the detail are all
@@ -121,13 +127,21 @@ colour behind it.
   with the yellow pill. Per-card colours were tried in v0.7.2 and nothing
   else on the 64-colour panel is as legible; the card name at the top does
   the job colour was doing. Colour never says whether the news is good.
-- Card fronts carry no history. Figure, pill, one plain line, and that is the
-  whole front. Three bar rows was the most a front could hold, which meant the
+- Card fronts carry one bar, not a history. Figure, pill, the current bar, one
+  plain line. Three bar rows was the most a front could hold, which meant the
   card spent two thirds of the screen on the least interesting window onto the
-  data; SELECT has room for thirty days instead.
+  data; SELECT has room for seven rows and a sixty-day chart instead. One bar
+  stays because the front still needs a graphic — Pebble Health's own cards are
+  right about that.
 - Charts never auto-zoom onto noise. Every series declares a `min_span` — the
   smallest difference allowed to fill the height — so 1.2 kg of water movement
-  is drawn as 1.2 kg rather than as the full card.
+  is drawn as 1.2 kg rather than as the full card. `METRIC_MIN_SPAN` is 4.0 kg
+  and applies to the Metric bars as well as its chart; where a bar's scale is
+  not obvious, the card prints the range it used underneath.
+- Sparse series get bars by entry, not by day. Weight is logged weekly at best,
+  so seven *days* of bars is one bar and seven *entries* is a month of them.
+  Entries older than a week are labelled "12d ago", never with a weekday name,
+  which would name the wrong day.
 - Nothing under Gothic 18. Titles are 18 bold caps, muted. The pill text is
   18 bold caps, black on yellow. Chevrons instead of dots.
 - SELECT gives a little more, not a lot: one graphic (a heart-rate area, or
@@ -173,7 +187,7 @@ gone. Delete them.
 UP / DOWN             move between the cards you have left switched on
 SELECT                open the detail for the card you are on
 SELECT (HRV)          start a test; long-press SELECT for the HRV graph
-long-press SELECT     on Metric: log today's value
+long-press SELECT     on Metric: log today's value (the card says so)
 long-press UP         dark / light theme
 BACK                  leave the detail (or the app, from a card)
 UP / DOWN             scroll, inside a detail view
@@ -189,11 +203,15 @@ until you pick something to track, so most people see fewer than this.
 | Card | Figure | Pill | Line | Behind SELECT |
 |---|---|---|---|---|
 | **Headroom** | 0–10 in a ring | the band | what the band means | the subtraction, the four readings behind it, 30 days |
-| **Night heart rate** | ± bpm vs your floor | your floor, nights it came from | what it cost | 7 nights of bars, week vs long-term, read diagnostics, 60 days |
-| **Sleep** | hours asleep | your usual, window | what it cost | 7 nights of bars, in bed / awake / sessions, night curve, 30 days |
+| **Night heart rate** | ± bpm vs your floor | your floor, nights it came from | last night's bar, what it cost | 7 nights of bars, week vs long-term, read diagnostics, 60 days |
+| **Sleep** | hours asleep | your usual, window | last night's bar, what it cost | 7 nights of bars, in bed / awake / sessions, night curve, 30 days |
 | **HRV** | last test, ms | recent average | not part of the score | 30 days, SDNN, beats dropped |
-| **Steps** | steps today | your goal, or your average day | over / to go | 7 days of steps |
-| **Metric** | last value | change over four weeks | not part of the score | 60 days, weekly averages |
+| **Steps** | steps today | your goal, or your average day | today's bar, over / to go | 7 days of steps |
+| **Metric** | last value | hold SELECT to log | how to reach both views | last 7 entries as bars, weekly averages, 60 days |
+
+Each front carries exactly one bar — today, or last night. Not history: a
+figure alone over an empty half-screen reads as a card that has not finished
+loading. History is behind SELECT, where seven rows fit instead of three.
 
 There is no prompt on launch. The app opens on the number.
 

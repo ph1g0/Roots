@@ -28,6 +28,12 @@ bool     metric_avg(int from_days_ago, int to_days_ago, uint16_t *out);
 // Newest last, one slot per day, 0 = no entry that day. Returns the count.
 int      metric_series(int *out, int days);
 
+// The most recent `max` entries, newest first, skipping the empty days
+// between them. `days_ago[i]` is how far back entry i was logged. Weight is
+// logged weekly at best, so "the last seven days" is usually one bar and "the
+// last seven entries" is the thing worth drawing. Returns how many were found.
+int      metric_recent(uint16_t *values, int *days_ago, int max, int within_days);
+
 // Display helpers. These respect the units setting; the store never does.
 const char *metric_name(void);         // "WEIGHT"
 const char *metric_unit(void);         // "kg" / "lb"

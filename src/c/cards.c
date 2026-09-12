@@ -23,11 +23,19 @@
 
 #define TOP_H   34    // chevron + title
 #define BOT_H   14    // chevron
+// Detail views scroll under an opaque header, so their content starts lower
+// than a card front's does. At TOP_H the first row sat six pixels under the
+// rule and read as part of the title.
+#define DET_TOP (TOP_H + 12)
 #define BAR_ROW 26    // label line + bar
 
 // bpm x10 between this week's mean and the long-term mean before the night
 // heart rate detail says anything about accumulated load. Under it, silence.
 #define DRIFT_X10 15
+
+// Smallest weight window, in display units x10, allowed to fill a chart or a
+// bar. 4.0 kg: under that you are looking at hydration, not at a trend.
+#define METRIC_MIN_SPAN 40
 
 // ---------------------------------------------------------------- helpers
 static void txt(GContext *ctx, const char *s, const char *font, GRect r,
@@ -283,6 +291,16 @@ static const char *ago_label(int ago) {
   return wday_name(today_wday() - ago);
 }
 
+// The same, but honest past a week: a weekday name seven or more days back
+// names the wrong day. Used by the Metric card, where entries are sparse and
+// the last seven of them can span a month.
+static const char *ago_label_far(int ago) {
+  static char buf[12];
+  if (ago < 7) return ago_label(ago);
+  snprintf(buf, sizeof buf, "%dd ago", ago);
+  return buf;
+}
+
 // ---------------------------------------------------------------- main cards
 const char *card_title(int card) {
   switch (card) {
@@ -368,13 +386,20 @@ static void draw_night_hr(GContext *ctx, GRect b, const Headroom *h) {
   if (n->floor_nights) snprintf(p2, sizeof p2, "LOWEST NIGHTS OF %u", n->floor_nights);
   y = pill(ctx, y, w, p1, tall(b) ? p2 : "");
 
+  // One bar for last night. Not history — the front needs a graphic, and a
+  // figure alone over an empty half-screen reads as a card still loading.
+  int base = n->floor_rhr_x10;
+  fmt_x10(t, sizeof t, n->night_rhr_x10);
+  y = bar_row(ctx, y, w, "Last night", t,
+              frac_pct((base + 80) - (int)n->night_rhr_x10, 0, 160), 50, C_DRAIN);
+
   char c[12];
   if (d <= 0) {
-    line(ctx, y, w, 3, "At or under your floor. Nothing owed on heart rate today.");
+    line(ctx, y + 2, w, 2, "At or under your floor. Nothing owed.");
   } else {
     headroom_fmt_x10(c, sizeof c, n->rhr_cost_x10);
     snprintf(p1, sizeof p1, "%s off today's ten.", c);
-    line(ctx, y, w, 3, p1);
+    line(ctx, y + 2, w, 2, p1);
   }
 }
 
@@ -402,17 +427,22 @@ static void draw_sleep(GContext *ctx, GRect b, const Headroom *h) {
     snprintf(p2, sizeof p2, "%s-%s", st, e); }
   y = pill(ctx, y, w, p1, tall(b) ? p2 : "");
 
+  int hi = usual ? (usual * 5) / 4 : 600;
+  fmt_hm(t, sizeof t, n->sleep_minutes);
+  y = bar_row(ctx, y, w, "Last night", t, frac_pct(n->sleep_minutes, 0, hi),
+              usual ? frac_pct(usual, 0, hi) : -1, C_SLEEP);
+
   if (n->sleep_cost_x10) {
     char cst[12]; fmt_hm(t, sizeof t, (uint16_t)(usual - n->sleep_minutes));
     headroom_fmt_x10(cst, sizeof cst, n->sleep_cost_x10);
-    snprintf(p1, sizeof p1, "%s short. %s off today's ten.", t, cst);
-    line(ctx, y, w, 3, p1);
+    snprintf(p1, sizeof p1, "%s short. %s off.", t, cst);
+    line(ctx, y + 2, w, 2, p1);
   } else if (usual && (int)n->sleep_minutes >= usual) {
     fmt_hm(t, sizeof t, (uint16_t)(n->sleep_minutes - usual));
     snprintf(p1, sizeof p1, "%s over your usual. Costs nothing.", t);
-    line(ctx, y, w, 3, p1);
+    line(ctx, y + 2, w, 2, p1);
   } else {
-    line(ctx, y, w, 3, "About your usual. Costs nothing.");
+    line(ctx, y + 2, w, 2, "About your usual. Costs nothing.");
   }
 }
 
@@ -461,11 +491,17 @@ static void draw_steps(GContext *ctx, GRect b, const Headroom *h) {
   fmt_thousands(p2, sizeof p2, mark);
   y = pill(ctx, y, w, p1, mark ? p2 : "");
 
+  int32_t hi = mark ? (mark * 13) / 10 : (d->steps > 0 ? d->steps : 1);
+  if (d->steps > hi) hi = d->steps;
+  fmt_thousands(big, sizeof big, d->steps);
+  y = bar_row(ctx, y, w, "Today", big, frac_pct((int)d->steps, 0, (int)hi),
+              mark ? frac_pct((int)mark, 0, (int)hi) : -1, C_STEPS);
+
   if (mark) {
     int32_t dd = d->steps - mark;
     char num[16]; fmt_thousands(num, sizeof num, dd < 0 ? -dd : dd);
     snprintf(p1, sizeof p1, "%s %s.", num, dd < 0 ? "to go" : "over");
-    line(ctx, y, w, 2, p1);
+    line(ctx, y + 2, w, 2, p1);
   }
 }
 
@@ -500,13 +536,13 @@ static void draw_metric(GContext *ctx, GRect b, const Headroom *h) {
     } else {
       snprintf(p1, sizeof p1, "%d DAYS AGO", ago);
     }
-    if (ago > 0) snprintf(p2, sizeof p2, "SELECT TO ADD TODAY");
+    if (ago > 0) snprintf(p2, sizeof p2, "HOLD SELECT TO LOG");
   } else {
     y = figure(ctx, y, w, "--", metric_unit());
-    snprintf(p1, sizeof p1, "SELECT TO ADD");
+    snprintf(p1, sizeof p1, "HOLD SELECT TO LOG");
   }
   y = pill(ctx, y, w, p1, tall(b) ? p2 : "");
-  line(ctx, y, w, 2, "Not part of the score.");
+  line(ctx, y, w, 3, "SELECT for history. Hold SELECT to log. Not part of the score.");
 }
 
 void cards_draw_main(GContext *ctx, GRect b, int card, const Headroom *h) {
@@ -539,7 +575,7 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
   const NightResult *n = &h->night;
   const DayResult   *d = &h->day;
   int w = b.size.w;
-  int y = TOP_H - scroll;
+  int y = DET_TOP - scroll;
   char v[48];
   int floor_bpm = n->floor_rhr_x10 / 10;
   static int s1[64];
@@ -680,23 +716,51 @@ int cards_draw_detail(GContext *ctx, GRect b, int card, const Headroom *h, int s
     y = line(ctx, y + 4, w, 4, "Paced breathing reads high. Compare tests with each other, not with other apps.");
 
   } else if (card == CARD_METRIC) {
-    int cn = metric_series(s1, 60);
-    // 4.0 kg is the smallest spread allowed to fill the chart: below that you
-    // are looking at hydration, not at a trend.
-    y = vbars(ctx, y, w, "60 days", s1, cn, 0, C_ACCENT, 70, 40, -1, -1);
+    // Bars for the last entries, the same grammar as Steps. Scaled over a
+    // window at least METRIC_MIN_SPAN wide, so half a kilo of water does not
+    // draw as the difference between a full bar and an empty one.
+    uint16_t mv[7]; int mago[7];
+    int mn = metric_recent(mv, mago, 7, 90);
+    if (mn) {
+      int lo = 0xFFFF, hi2 = 0;
+      for (int i = 0; i < mn; i++) {
+        int dv = metric_to_display(mv[i]);
+        if (dv < lo) lo = dv;
+        if (dv > hi2) hi2 = dv;
+      }
+      int span = hi2 - lo;
+      if (span < METRIC_MIN_SPAN) { int grow = METRIC_MIN_SPAN - span; lo -= grow / 2; hi2 += grow - grow / 2; }
+      int pad = (hi2 - lo) / 6; if (pad < 1) pad = 1;
+      lo -= pad; hi2 += pad;
+      if (lo < 0) lo = 0;
+      for (int i = 0; i < mn; i++) {
+        int dv = metric_to_display(mv[i]);
+        snprintf(v, sizeof v, "%d.%d %s", dv / 10, dv % 10, metric_unit());
+        y = bar_row(ctx, y, w, ago_label_far(mago[i]), v, frac_pct(dv, lo, hi2), -1, C_ACCENT);
+      }
+      snprintf(v, sizeof v, "Scale: %d.%d to %d.%d %s.", lo / 10, lo % 10, hi2 / 10, hi2 % 10, metric_unit());
+      y = line(ctx, y + 2, w, 2, v);
+    } else {
+      y = line(ctx, y, w, 2, "Nothing logged yet.");
+    }
+
     uint16_t a;
     if (metric_avg(0, 6, &a))   { uint16_t x = metric_to_display(a);
       snprintf(v, sizeof v, "%u.%u %s", x / 10, x % 10, metric_unit()); }
     else snprintf(v, sizeof v, "--");
-    y = row_kv(ctx, y, w, "This week", v);
+    y = row_kv(ctx, y + 2, w, "This week", v);
     if (metric_avg(7, 27, &a))  { uint16_t x = metric_to_display(a);
       snprintf(v, sizeof v, "%u.%u %s", x / 10, x % 10, metric_unit()); }
     else snprintf(v, sizeof v, "--");
     y = row_kv(ctx, y, w, "Four weeks ago", v);
+
+    int cn = metric_series(s1, 60);
     { int cnt = 0; for (int i = 0; i < cn; i++) if (s1[i]) cnt++;
       snprintf(v, sizeof v, "%d in 60 days", cnt); }
     y = row_kv(ctx, y, w, "Entries", v);
-    y = line(ctx, y + 4, w, 4, "Weekly averages, not day to day: most of the daily movement is water.");
+    y = vbars(ctx, y + 6, w, "60 days", s1, cn, 0, C_ACCENT, 70, METRIC_MIN_SPAN, -1, -1);
+    y = line(ctx, y + 4, w, 3, "Weekly averages, not day to day: most of the daily movement is water.");
+    y = line(ctx, y, w, 2, "Hold SELECT on the card to log today.");
 
   } else {  // CARD_STEPS — seven days, and nothing that is not steps
     time_t day0 = time_start_of_today();
