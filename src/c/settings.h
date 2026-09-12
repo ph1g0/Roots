@@ -36,7 +36,10 @@ typedef struct {
   uint16_t cards;       // bitmask of visible cards, bit n = Card n
 } Settings;
 
-#define SETTINGS_SCHEMA 1
+// 2: the Trend and Data cards were removed, which renumbered every card after
+// them. The bitmask is persisted, so a v1 blob read at v2 positions would hide
+// the wrong cards. Bumping it puts everyone back on the defaults once.
+#define SETTINGS_SCHEMA 2
 
 const Settings *settings(void);
 

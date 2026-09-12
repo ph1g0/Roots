@@ -11,9 +11,10 @@
 #define KEY_NIGHT_RESULT       10   // NightResult blob
 
 // v0.6
-#define KEY_FEEL_DAY           11   // int, history day key of the last day we asked
-#define KEY_FEEL_BIAS_X10      12   // int, calibration offset applied to the score, x10
-#define KEY_FEEL_COUNT         13   // int, answers so far
+// 11, 12 and 13 were the "how do you feel" prompt's day marker, calibration
+// offset and answer count (v0.6-v0.8). The prompt is gone and none of the
+// three are reused: a stale bias read back under a new meaning is exactly the
+// silent wrongness the rest of this list exists to avoid.
 #define KEY_HRV_LAST           14   // HrvResult blob, most recent test
 #define KEY_THEME_DARK         15   // bool, default true
 #define KEY_BACKFILL_VER       16   // int; bump BACKFILL_VER to make old blank records retry
@@ -27,7 +28,7 @@
 
 // Bump when NightResult changes shape. A cached blob with a different schema
 // is thrown away rather than reinterpreted.
-#define NIGHT_SCHEMA           4
+#define NIGHT_SCHEMA           5
 
 // Bump when DayRecord changes shape. Unlike NightResult, history is not
 // thrown away on a mismatch — three months of nights is the whole point of

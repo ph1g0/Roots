@@ -131,12 +131,10 @@ static void inbox(DictionaryIterator *it, void *ctx) {
     s_s.hrr_z3 = (v >= 50 && v <= 85) ? (uint8_t)v : 0;
 
   uint16_t cards = s_s.cards;
-  cards = card_bit(it, MESSAGE_KEY_cardDrain,    cards, CARD_DRAIN);
-  cards = card_bit(it, MESSAGE_KEY_cardRecharge, cards, CARD_RECHARGE);
-  cards = card_bit(it, MESSAGE_KEY_cardTrend,    cards, CARD_TRENDS);
+  cards = card_bit(it, MESSAGE_KEY_cardNightHr,  cards, CARD_NIGHT_HR);
+  cards = card_bit(it, MESSAGE_KEY_cardSleep,    cards, CARD_SLEEP);
   cards = card_bit(it, MESSAGE_KEY_cardHrv,      cards, CARD_HRV);
   cards = card_bit(it, MESSAGE_KEY_cardSteps,    cards, CARD_STEPS);
-  cards = card_bit(it, MESSAGE_KEY_cardData,     cards, CARD_DATA);
   s_s.cards = (uint16_t)(cards | (1u << CARD_HEADROOM));
 
   persist_write_data(KEY_SETTINGS, &s_s, sizeof s_s);

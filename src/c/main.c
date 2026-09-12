@@ -2,7 +2,6 @@
 #include "common.h"
 #include "headroom.h"
 #include "cards.h"
-#include "feel.h"
 #include "hrv.h"
 #include "metric.h"
 #include "settings.h"
@@ -163,11 +162,6 @@ static void health_event(HealthEventType e, void *c) {
 }
 
 // ---------------------------------------------------------------- lifecycle
-static void feel_answered(uint8_t feel) {
-  headroom_record_feel(&s_h, feel);
-  redraw();
-}
-
 // The phone sent new settings: colours, which cards are shown, the zone
 // floor. Rebuild everything that depends on them and redraw in place.
 static void settings_changed(void) {
@@ -202,9 +196,13 @@ static void init(void) {
   window_set_window_handlers(s_main, (WindowHandlers){ .load = main_load, .unload = main_unload });
   window_stack_push(s_main, false);
 
-  // Asked before the number is seen, so the number cannot anchor the answer.
-  // The main window is already underneath; BACK from the prompt lands on it.
-  if (feel_should_ask()) feel_show(feel_answered);
+  // v0.8 asked "how do you feel?" here, before the number was visible, and
+  // fed the answer back as a calibration offset. It is gone. Self-report is
+  // not a second opinion the model can be graded against: people are poor
+  // judges of their own state, the answer is trivially gameable in either
+  // direction, and the mapping it used made an honest "Good" read as a
+  // complaint that the score was too high. The app measures or it says
+  // nothing.
 }
 
 static void deinit(void) {

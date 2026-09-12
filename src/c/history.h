@@ -46,6 +46,17 @@ const DayRecord *history_get(int days_ago);
 // Returns 0 and n = 0 when there is nothing.
 uint16_t history_avg_rhr_x10(int from_days_ago, int to_days_ago, int *n);
 
+// Your recovered level: the mean of the lowest `pct` percent of readable
+// nights in [from, to]. `n` receives how many nights were in range.
+//
+// This is deliberately not the mean. A mean sits above your recovered heart
+// rate by construction, because every drained night is in it — which put the
+// entire informative region (your true floor up to a few bpm over it) below
+// the line, and made a hard session read as "below baseline, so fine". The
+// lowest slice is what you look like with nothing owed, and that is the only
+// thing a deduction can sensibly be measured from.
+uint16_t history_low_rhr_x10(int from_days_ago, int to_days_ago, int pct, int *n);
+
 // Mean waking resting HR (bpm) over days_ago in [from, to]. 0 when empty.
 uint8_t history_avg_rest_bpm(int from_days_ago, int to_days_ago, int *n);
 

@@ -156,6 +156,33 @@ uint16_t history_avg_rhr_x10(int from_days_ago, int to_days_ago, int *n) {
   return cnt ? (uint16_t)(sum / cnt) : 0;
 }
 
+uint16_t history_low_rhr_x10(int from_days_ago, int to_days_ago, int pct, int *n) {
+  history_load();
+  static uint16_t v[HIST_DAYS];          // 180 bytes; too big for the stack here
+  uint16_t today = history_day_key();
+  int cnt = 0;
+  for (int i = 0; i < s_n && cnt < HIST_DAYS; i++) {
+    int ago = (int)today - (int)s_rec[i].day;
+    if (ago < from_days_ago || ago > to_days_ago) continue;
+    if (s_rec[i].rhr_x10 == 0 || REC_CONF(&s_rec[i]) < 2) continue;   // CONF_MEDIUM
+    v[cnt++] = s_rec[i].rhr_x10;
+  }
+  *n = cnt;
+  if (cnt == 0) return 0;
+
+  for (int i = 1; i < cnt; i++) {        // insertion sort; cnt <= 90 and nearly sorted
+    uint16_t x = v[i]; int j = i - 1;
+    while (j >= 0 && v[j] > x) { v[j + 1] = v[j]; j--; }
+    v[j + 1] = x;
+  }
+  int k = (cnt * pct) / 100;
+  if (k < 1) k = 1;                      // one night is a floor of sorts
+  if (k > cnt) k = cnt;
+  uint32_t sum = 0;
+  for (int i = 0; i < k; i++) sum += v[i];
+  return (uint16_t)(sum / k);
+}
+
 uint8_t history_avg_rest_bpm(int from_days_ago, int to_days_ago, int *n) {
   history_load();
   uint16_t today = history_day_key();

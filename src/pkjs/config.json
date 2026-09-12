@@ -16,7 +16,7 @@
       },
       {
         "type": "text",
-        "defaultValue": "Age sets a starting ceiling for your heart-rate zones. Once Roots has seen you actually reach a higher rate, it uses the real number instead — this only fills the gap in the first weeks."
+        "defaultValue": "Age sets a starting ceiling for your heart-rate zones. Once Roots has seen you actually reach a higher rate, it uses the real number instead \u2014 this only fills the gap in the first weeks."
       },
       {
         "type": "input",
@@ -76,7 +76,7 @@
       },
       {
         "type": "text",
-        "defaultValue": "Where work starts counting, as a percentage of your heart-rate reserve. 70% is the top of zone 2, so a commute and a day at a desk count for nothing. Lower it if heavy lifting — where the peaks are short — reads as zero on days that cost you."
+        "defaultValue": "Where work starts counting, as a percentage of your heart-rate reserve. 70% is the top of zone 2, so a commute and a day at a desk count for nothing. Lower it if heavy lifting \u2014 where the peaks are short \u2014 reads as zero on days that cost you."
       },
       {
         "type": "slider",
@@ -142,20 +142,14 @@
       },
       {
         "type": "toggle",
-        "messageKey": "cardDrain",
+        "messageKey": "cardNightHr",
         "label": "Night heart rate",
         "defaultValue": true
       },
       {
         "type": "toggle",
-        "messageKey": "cardRecharge",
+        "messageKey": "cardSleep",
         "label": "Sleep",
-        "defaultValue": true
-      },
-      {
-        "type": "toggle",
-        "messageKey": "cardTrend",
-        "label": "Trend",
         "defaultValue": true
       },
       {
@@ -168,12 +162,6 @@
         "type": "toggle",
         "messageKey": "cardSteps",
         "label": "Steps",
-        "defaultValue": true
-      },
-      {
-        "type": "toggle",
-        "messageKey": "cardData",
-        "label": "Data",
         "defaultValue": true
       },
       {

@@ -15,6 +15,7 @@
 #define NIGHT_SPAN_H         18    // ...through 12:00 today
 
 #define MIN_NIGHT_MINUTES    180   // total asleep below this is not a night
+#define MAX_NIGHT_MINUTES    840   // 14 h; past this it is not a night either
 #define SESSION_JOIN_MIN     90    // gap that still counts as the same night
 #define MAX_SESSIONS         12
 #define QUIET_STEP_MAX       15    // steps that can still be a toilet trip
@@ -28,8 +29,8 @@
 #define MIN_CLEAN_MINUTES    20    // below this: no number at all
 
 // VMC has no documented unit on this hardware and we have already been burned
-// once by guessing units (see README, accelerometer). The gate ships off; the
-// Data card reports the VMC we actually saw so it can be set from real data.
+// once by guessing units (see README, accelerometer). The gate ships off, and
+// NightResult keeps the VMC we actually saw so it can be set from real data.
 #define STILL_VMC_MAX        0     // 0 = rule off
 
 #define BASELINE_EMA_ALPHA   15    // percent, ~14-night effective window
@@ -37,19 +38,40 @@
 // two is weighted 50%, night three 33%, and the baseline is usable from day
 // two instead of being pinned to whatever the first night happened to be.
 #define BASELINE_MEAN_NIGHTS 7
-#define FEEL_EMA_ALPHA       25    // percent
-#define FEEL_BIAS_MAX_X10    150   // +/- 15 points of calibration, no more
-#define AT_BASELINE_SCORE    88    // a normal night is "Strong", not "Full send"
-#define RHR_POINTS_PER_BPM   8
-#define RHR_BONUS_SPAN_X10   15    // 1.5 bpm below baseline reaches 100
+
+// ---- The score ---------------------------------------------------------
+// Ten points, minus what you owe. Nothing adds.
+//
+// v0.8 anchored a normal night at 88/100 and clipped at 100 after 1.5 bpm, so
+// everything from your recovered floor down to your best night ever collapsed
+// onto the same number, and a 3 bpm overnight rise moved the score by four
+// points out of a hundred. The clip is gone: there is no reward region left to
+// clip, because being further below the floor earns nothing at all.
+#define RHR_COST_PER_BPM_X10 10    // tenths of a point per bpm over the floor
+#define SLEEP_COST_PER_H_X10 20    // tenths of a point per hour short
+#define SLEEP_COST_MAX_X10   50    // sleep alone never takes more than half
+// Sleep detection on this hardware is good to roughly a quarter hour, so a few
+// minutes under your usual is measurement noise, not a short night. This is an
+// instrument tolerance, not a grace period: it is set to what the sensor can
+// actually resolve and nothing more.
+#define SLEEP_TOLERANCE_MIN  10
+
+// The recovered floor: the mean of the lowest RECOVERED_PCT of readable nights
+// over RECOVERED_DAYS. Long enough that a training block cannot drag it up
+// with itself, short enough that real fitness gains move it within a couple of
+// months — which is the answer to "my score must not climb forever".
+#define RECOVERED_PCT        30
+#define RECOVERED_DAYS       60
+#define RECOVERED_MIN_NIGHTS 2
 
 // ---- Waking rest -------------------------------------------------------
 // A sleeping trough is not a resting heart rate. The same person who troughs
 // at 54 asleep sits at 66-72 at a desk. v0.6 put the "elevated" line at the
 // trough plus a fixed 25 bpm, which lands ~8 bpm above sitting and calls most
-// of the waking day elevated: 433 minutes on a normal Tuesday, and a drain
-// pinned at DRAIN_MAX every single day, which is a constant, not a signal.
-// So the waking figure is measured rather than assumed.
+// of the waking day elevated: 433 minutes on a normal Tuesday, which is a
+// constant, not a signal. So the waking figure is measured rather than
+// assumed. Since v1.0 none of this reaches the score — it places the zone
+// thresholds the Steps detail draws, and nothing else.
 #define REST_PCTILE          20    // percentile of still daytime minutes
 #define REST_HR_MAX          140   // above this it is not a resting minute
 #define REST_MIN_SAMPLES     12    // fewer readings than this: fall back
@@ -59,9 +81,10 @@
 // ---- Zones -------------------------------------------------------------
 // Karvonen, on the reserve between waking rest and the personal ceiling.
 // Counting starts at the zone 2 ceiling, so a commute, a flight of stairs and
-// eight hours at a desk score nothing at all — which is the promise in §13.
+// eight hours at a desk count nothing at all — which is the promise in §13.
 // HRR_Z3 is the dial: lower it toward 60 if heavy lifting, where the peaks
-// are brief, reads as zero too often.
+// are brief, reads as zero too often. Display only; a wrong value here is
+// cosmetic now rather than load-bearing.
 #define HRR_Z3               70    // % of heart-rate reserve
 #define HRR_Z4               80
 #define HRR_Z5               90
@@ -83,9 +106,6 @@
 // the next one, up to this cap. v0.5 counted only the minutes that held a
 // reading, which is why the Drain card never showed anything.
 #define HR_HOLD_MIN          10
-#define DRAIN_FREE_WMIN      10    // weighted minutes that cost nothing
-#define DRAIN_WMIN_PER_POINT 6     // saturates at 130 weighted minutes
-#define DRAIN_MAX            20
 
 // ------------------------------------------------------------------
 // Minute buffer. One flat array, loaded over whichever range the caller needs,
@@ -377,6 +397,52 @@ static uint8_t cap_conf(uint8_t c, int nights) {
   return c;
 }
 
+// Ten points, minus what you owe. The one place the score is computed, so a
+// night in the history chart and the night on the front of the app can never
+// disagree about what the same two numbers are worth.
+//
+//   sleep_min == 0 means the night's sleep was not measured, not that you did
+//   not sleep. An unmeasured night costs nothing: the app does not know, and
+//   charging you for what it does not know is exactly the dishonesty §8 is
+//   about. It shows up as reduced confidence instead.
+static void score_night(int rhr_x10, int sleep_min, int floor_x10, int base_sleep,
+                        uint8_t *rhr_cost, uint8_t *sleep_cost, uint8_t *score_x10) {
+  int over = rhr_x10 - floor_x10;                    // bpm * 10
+  if (over < 0) over = 0;                            // below the floor earns nothing
+  int rc = (over * RHR_COST_PER_BPM_X10) / 10;
+  rc = clampi(rc, 0, SCORE_FULL_X10);
+
+  int sc = 0;
+  if (sleep_min > 0 && base_sleep > 0) {
+    int short_min = base_sleep - SLEEP_TOLERANCE_MIN - sleep_min;
+    if (short_min > 0) sc = clampi((short_min * SLEEP_COST_PER_H_X10) / 60,
+                                   0, SLEEP_COST_MAX_X10);
+  }
+
+  *rhr_cost   = (uint8_t)rc;
+  *sleep_cost = (uint8_t)sc;
+  *score_x10  = (uint8_t)clampi(SCORE_FULL_X10 - rc - sc, 0, SCORE_FULL_X10);
+}
+
+// Every stored night is rescored against the floor as it stands today, so the
+// history chart is one consistent scale rather than a record of what each
+// morning happened to believe at the time. It is 90 records and no sensor
+// work, and it is what makes a chart drawn after the floor moves still mean
+// something.
+static void rescore_history(int floor_x10, int base_sleep) {
+  if (floor_x10 <= 0) return;
+  int cnt = 0;
+  DayRecord *recs = (DayRecord *)history_records(&cnt);
+  bool dirty = false;
+  for (int i = 0; i < cnt; i++) {
+    uint8_t rc, sc, s;
+    if (recs[i].rhr_x10 == 0) { if (recs[i].score) { recs[i].score = 0; dirty = true; } continue; }
+    score_night(recs[i].rhr_x10, recs[i].sleep_min, floor_x10, base_sleep, &rc, &sc, &s);
+    if (recs[i].score != s) { recs[i].score = s; dirty = true; }
+  }
+  if (dirty) history_save();
+}
+
 static void night_body(NightResult *r, time_t day0, uint8_t *raw_conf_out) {
   time_t from, to;
   night_range(day0, &from, &to);
@@ -385,7 +451,17 @@ static void night_body(NightResult *r, time_t day0, uint8_t *raw_conf_out) {
   int base_rhr   = persist_exists(KEY_BASELINE_RHR_X10)   ? persist_read_int(KEY_BASELINE_RHR_X10)   : 0;
   int base_sleep = persist_exists(KEY_BASELINE_SLEEP_MIN) ? persist_read_int(KEY_BASELINE_SLEEP_MIN) : 450;
   int nights     = persist_exists(KEY_BASELINE_NIGHTS)    ? persist_read_int(KEY_BASELINE_NIGHTS)    : 0;
-  r->baseline_rhr_x10   = (uint16_t)base_rhr;
+
+  // The floor is read from the stored history, from yesterday backwards, so
+  // tonight is never part of the thing tonight is measured against. Until
+  // there are enough nights for a percentile to mean anything, the old EMA
+  // stands in — and the number is flagged provisional the whole time.
+  int nfloor = 0;
+  int floor_rhr = history_low_rhr_x10(1, RECOVERED_DAYS, RECOVERED_PCT, &nfloor);
+  if (nfloor < RECOVERED_MIN_NIGHTS || floor_rhr == 0) { floor_rhr = base_rhr; nfloor = 0; }
+
+  r->floor_rhr_x10      = (uint16_t)floor_rhr;
+  r->floor_nights       = (uint8_t)(nfloor > 255 ? 255 : nfloor);
   r->baseline_sleep_min = (uint16_t)base_sleep;
   r->nights_learned     = (uint8_t)nights;
 
@@ -410,10 +486,21 @@ static void night_body(NightResult *r, time_t day0, uint8_t *raw_conf_out) {
     return;
   }
 
+  // A stillness window is good enough to read a heart-rate trough from, but it
+  // is not sleep and must never be filed as sleep. A watch in its box is
+  // perfectly still, every one of its minutes is "quiet", and window_from_quiet
+  // counts missing minutes as quiet on purpose — so v0.8 recorded the entire
+  // 18-hour search range as one night's sleep. That is the doubled first bar
+  // on anyone's chart who did not wear the watch on day one.
+  //
+  // Only HealthActivitySleep counts, and only inside a plausible length.
+  r->sleep_known = (r->window_source == WIN_SLEEP_API) &&
+                   asleep >= MIN_NIGHT_MINUTES && asleep <= MAX_NIGHT_MINUTES;
+
   r->sleep_sessions = sessions;
   r->win_minutes    = (uint16_t)(we - ws);
-  r->sleep_span_min = (uint16_t)(we - ws);   // first asleep to last awake
-  r->sleep_minutes  = asleep;                // what Pebble Health calls sleep
+  r->sleep_span_min = r->sleep_known ? (uint16_t)(we - ws) : 0;
+  r->sleep_minutes  = r->sleep_known ? asleep : 0;
   r->win_start_min  = minute_of_day(time_of(ws));
   r->win_end_min    = minute_of_day(time_of(we));
 
@@ -430,19 +517,10 @@ static void night_body(NightResult *r, time_t day0, uint8_t *raw_conf_out) {
 
   // `nights` counts the nights already in the baseline; tonight makes one
   // more. With MIN_BASELINE_NIGHTS = 2 the first number appears on morning two.
-  if (nights + 1 >= MIN_BASELINE_NIGHTS && base_rhr > 0) {
-    int d = (int)r->night_rhr_x10 - base_rhr;               // bpm * 10
-    r->load_part = (uint8_t)(d <= 0
-        ? clampi(AT_BASELINE_SCORE + ((-d) * (100 - AT_BASELINE_SCORE)) / RHR_BONUS_SPAN_X10,
-                 AT_BASELINE_SCORE, 100)
-        : clampi(AT_BASELINE_SCORE - (d * RHR_POINTS_PER_BPM) / 10, 0, AT_BASELINE_SCORE));
-
-    int short_min = (base_sleep * 95) / 100 - (int)r->sleep_minutes;
-    r->sleep_part = (uint8_t)(short_min <= 0
-        ? clampi(AT_BASELINE_SCORE + ((int)r->sleep_minutes - base_sleep) / 5, AT_BASELINE_SCORE, 100)
-        : clampi(AT_BASELINE_SCORE - (short_min * 15) / 60, 0, AT_BASELINE_SCORE));
-
-    r->morning_score = (uint8_t)((r->load_part * 70 + r->sleep_part * 30) / 100);
+  if (nights + 1 >= MIN_BASELINE_NIGHTS && floor_rhr > 0) {
+    score_night(r->night_rhr_x10, r->sleep_known ? r->sleep_minutes : 0,
+                floor_rhr, base_sleep,
+                &r->rhr_cost_x10, &r->sleep_cost_x10, &r->morning_score_x10);
     r->scored = true;
   }
 
@@ -452,11 +530,15 @@ static void night_body(NightResult *r, time_t day0, uint8_t *raw_conf_out) {
   bool feeds_baseline = raw_conf >= CONF_MEDIUM ||
                         (raw_conf == CONF_LOW && nights < SETTLED_BASELINE_NIGHTS);
   if (feeds_baseline) {
-    base_rhr   = ema(base_rhr,   r->night_rhr_x10, nights);
-    base_sleep = ema(base_sleep, r->sleep_minutes, nights);
+    base_rhr = ema(base_rhr, r->night_rhr_x10, nights);
+    // Only a measured night moves your usual sleep. Feeding an unknown night
+    // in as a zero is how a sleep baseline walks to nothing.
+    if (r->sleep_known) {
+      base_sleep = ema(base_sleep, r->sleep_minutes, nights);
+      persist_write_int(KEY_BASELINE_SLEEP_MIN, base_sleep);
+    }
     if (nights < 250) nights++;
     persist_write_int(KEY_BASELINE_RHR_X10, base_rhr);
-    persist_write_int(KEY_BASELINE_SLEEP_MIN, base_sleep);
     persist_write_int(KEY_BASELINE_NIGHTS, nights);
     r->nights_learned = (uint8_t)nights;
   }
@@ -472,11 +554,12 @@ static void night_analyse_for(NightResult *r, time_t day0, uint16_t hist_day) {
   uint8_t raw_conf = CONF_NONE;
   night_body(r, day0, &raw_conf);
 
-  // The daily summary record. Feel and HRV are filled in later in the day.
+  // The daily summary record. HRV is filled in later in the day.
   DayRecord *rec = history_upsert(hist_day);
   rec->rhr_x10   = r->night_rhr_x10;
-  rec->sleep_min = r->sleep_minutes;
-  rec->score     = r->morning_score;
+  rec->sleep_min = r->sleep_known ? r->sleep_minutes : 0;
+  rec->score     = r->morning_score_x10;     // tenths, same scale as the card
+  rec->feel      = 0;                        // the daily question is gone; see v0.9
   REC_SET(rec, raw_conf, REC_TRIES(rec) + 1);
   history_save();
 }
@@ -517,6 +600,15 @@ static void backfill(void) {
     NightResult tmp;
     night_analyse_for(&tmp, day0 - (time_t)k * SECONDS_PER_DAY, (uint16_t)(today - k));
   }
+
+  // Backfill runs oldest first, so the earliest nights were scored against a
+  // floor that did not yet include the later ones. One pass over the finished
+  // set fixes that, and costs nothing.
+  int nf = 0;
+  int fl = history_low_rhr_x10(1, RECOVERED_DAYS, RECOVERED_PCT, &nf);
+  if (nf >= RECOVERED_MIN_NIGHTS)
+    rescore_history(fl, persist_exists(KEY_BASELINE_SLEEP_MIN)
+                          ? persist_read_int(KEY_BASELINE_SLEEP_MIN) : 450);
 }
 
 static void night_cached(NightResult *r) {
@@ -613,7 +705,7 @@ static void day_analyse(DayResult *d, const NightResult *n) {
   int nrest = 0;
   int rest = history_avg_rest_bpm(0, REST_BASELINE_DAYS - 1, &nrest);
   if (!rest) rest = rest_today;
-  if (!rest && n->baseline_rhr_x10) rest = n->baseline_rhr_x10 / 10 + REST_FALLBACK_ADD;
+  if (!rest && n->floor_rhr_x10) rest = n->floor_rhr_x10 / 10 + REST_FALLBACK_ADD;
   d->rest_bpm = (uint16_t)rest;
 
   int predicted = hrmax_predicted();
@@ -660,71 +752,44 @@ static void day_analyse(DayResult *d, const NightResult *n) {
 
   d->curve_start_min = minute_of_day(s_min_t0);
   d->curve_step_min  = fill_curve(d->curve, 0, s_min_n, HR_MIN_PLAUSIBLE, 220);
-
-  // Weighted minutes, not minutes. An hour at the bottom of zone 3 and twenty
-  // minutes of intervals are not the same cost, and the old count could not
-  // tell them apart because both saturated it.
-  int over = (int)d->work_minutes - DRAIN_FREE_WMIN;
-  d->drain = (uint8_t)(over <= 0 ? 0 : clampi(over / DRAIN_WMIN_PER_POINT, 0, DRAIN_MAX));
 }
 
+// Bands on the printed number, not on the tenths, so the word under the score
+// can never contradict the digit above it.
 static uint8_t band_for(uint8_t score) {
-  if (score >= 90) return BAND_FULL;
-  if (score >= 72) return BAND_STRONG;
-  if (score >= 55) return BAND_MODERATE;
-  if (score >= 40) return BAND_AEROBIC;
+  if (score >= 10) return BAND_FULL;
+  if (score >= 8)  return BAND_STRONG;
+  if (score >= 6)  return BAND_MODERATE;
+  if (score >= 4)  return BAND_AEROBIC;
   return BAND_EASY;
-}
-
-static int feel_bias_x10(void) {
-  return persist_exists(KEY_FEEL_BIAS_X10) ? persist_read_int(KEY_FEEL_BIAS_X10) : 0;
 }
 
 static void finalise(Headroom *h) {
   h->valid       = h->night.scored;
   h->provisional = h->night.nights_learned < SETTLED_BASELINE_NIGHTS;
-  h->feel_bias   = (int8_t)(feel_bias_x10() / 10);
-  const DayRecord *rec = history_get(0);
-  h->feel_today  = rec ? rec->feel : 0;
-  if (!h->valid) { h->score = 0; h->band = BAND_NONE; return; }
-  int s = (int)h->night.morning_score + (int)h->feel_bias - (int)h->day.drain;
-  h->score = (uint8_t)clampi(s, 0, 100);
-  h->band  = band_for(h->score);
+  if (!h->valid) { h->score_x10 = 0; h->score = 0; h->band = BAND_NONE; return; }
+  // The morning number is the whole number. Nothing done since waking is
+  // subtracted from it, so it does not quietly fall through the afternoon.
+  h->score_x10 = h->night.morning_score_x10;
+  h->score     = (uint8_t)clampi((h->score_x10 + 5) / 10, 0, 10);
+  h->band      = band_for(h->score);
 }
 
 void headroom_compute(Headroom *out) {
   memset(out, 0, sizeof(*out));
   night_cached(&out->night);
+  rescore_history(out->night.floor_rhr_x10, out->night.baseline_sleep_min);
   day_analyse(&out->day, &out->night);
   headroom_refresh_steps(out);
   finalise(out);
 }
 
-// What each felt state says the morning number should have been. These are
-// band midpoints, so "Good" sits in Strong and "Great" in Full send.
-static const uint8_t FEEL_TARGET[6] = { 0, 35, 50, 64, 80, 93 };
-
-void headroom_record_feel(Headroom *h, uint8_t feel) {
-  if (feel < 1 || feel > 5) return;
-  DayRecord *rec = history_today();
-  rec->feel = feel;
-  history_save();
-
-  // Calibrate only against a real number: on the first mornings there is
-  // nothing for the answer to disagree with.
-  if (h->night.scored) {
-    int want   = FEEL_TARGET[feel] * 10;
-    int got    = (int)h->night.morning_score * 10;
-    int bias   = feel_bias_x10();
-    int count  = persist_exists(KEY_FEEL_COUNT) ? persist_read_int(KEY_FEEL_COUNT) : 0;
-    int alpha  = count < 3 ? 100 / (count + 1) : FEEL_EMA_ALPHA;   // 100, 50, 33, then 25
-    if (alpha < FEEL_EMA_ALPHA) alpha = FEEL_EMA_ALPHA;
-    bias += (((want - got) - bias) * alpha) / 100;
-    bias  = clampi(bias, -FEEL_BIAS_MAX_X10, FEEL_BIAS_MAX_X10);
-    persist_write_int(KEY_FEEL_BIAS_X10, bias);
-    persist_write_int(KEY_FEEL_COUNT, count + 1);
-  }
-  finalise(h);
+// "6.9", or "10" with no decimal because a tenth of a point on a full battery
+// is a distinction without a difference.
+void headroom_fmt_x10(char *buf, int n, int x10) {
+  if (x10 >= SCORE_FULL_X10) { snprintf(buf, n, "10"); return; }
+  int a = x10 < 0 ? -x10 : x10;
+  snprintf(buf, n, "%s%d.%d", x10 < 0 ? "-" : "", a / 10, a % 10);
 }
 
 void headroom_refresh_day(Headroom *out) {
@@ -773,20 +838,9 @@ const char *band_line(uint8_t band) {
 }
 
 const char *headroom_status(const Headroom *h) {
-  if (h->night.confidence == CONF_NONE) return "No readable night yet. Open the Data card.";
+  if (h->night.confidence == CONF_NONE) return "No readable night yet. Press SELECT for why.";
   if (h->night.nights_learned < MIN_BASELINE_NIGHTS) return "First night logged. Your first number arrives tomorrow.";
   return "No number today.";
-}
-
-const char *feel_label(uint8_t feel) {
-  switch (feel) {
-    case 1:  return "Rough";
-    case 2:  return "Low";
-    case 3:  return "Okay";
-    case 4:  return "Good";
-    case 5:  return "Great";
-    default: return "--";
-  }
 }
 
 const char *confidence_label(uint8_t c) {

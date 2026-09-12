@@ -22,12 +22,10 @@
             "stepGoal",
             "age",
             "hrrZ3",
-            "cardDrain",
-            "cardRecharge",
-            "cardTrend",
+            "cardNightHr",
+            "cardSleep",
             "cardHrv",
-            "cardSteps",
-            "cardData"
+            "cardSteps"
         ],
         "projectType": "native",
         "resources": {
@@ -42,5 +40,5 @@
             "watchface": false
         }
     },
-    "version": "1.0.0"
+    "version": "0.9.0"
 }

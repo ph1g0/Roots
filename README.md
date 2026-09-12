@@ -20,7 +20,26 @@ steps and sleep since 4.33 but not heart rate.
 
 ## Version notes
 
-- **v0.9 (current)** — the first card is called **Headroom**, because
+- **v1.0 (current)** — the score is **0–10**, and it is a subtraction rather
+  than a position on a scale. Ten points, minus night heart rate above your
+  *recovered floor*, minus sleep short of your usual. Nothing adds: a lower
+  night and a longer sleep both earn zero, so the number cannot inflate as
+  fitness improves — the floor moves down instead and ten keeps meaning
+  recovered. The baseline changed with it: the mean of every night sat *above*
+  the recovered level by construction, which put the whole informative region
+  below the line and made a hard session read as "below baseline, so fine".
+  It is now the mean of the lowest 30% of readable nights over 60 days.
+  **The daily "how do you feel?" prompt is gone**, along with its calibration
+  offset — self-report is gameable in both directions, and the mapping it used
+  meant an honest "Good" was read as a complaint that the score was too high.
+  Intraday drain no longer subtracts. **Trend** and **Data** cards removed;
+  their content moved next to the readings it is about. Card fronts no longer
+  show three days of bars — history lives behind SELECT, where there is room
+  for thirty. Charts no longer auto-zoom onto noise (`min_span`). A stillness
+  window is no longer recorded as sleep, which is what produced a doubled
+  first night for anyone whose watch spent day one in its box.
+
+- **v0.9** — the first card is called **Headroom**, because
   "Today" named the screen instead of the number. Settings moved to the phone
   (Clay config page): age and sex for a better starting ceiling, units, step
   goal, zone floor, accent colour, and which cards are shown at all. No Setup
@@ -79,7 +98,7 @@ steps and sleep since 4.33 but not heart rate.
 - v0.2 — ring UI, detail cards.
 - v0.1 — initial score + cadence-locked raw accelerometer filter.
 
-## Design (v0.7)
+## Design
 
 The cards borrow Pebble Health's vocabulary, because that vocabulary is
 right for this screen: a graphic with a number in it, not text with a
@@ -88,14 +107,11 @@ colour behind it.
 ```
         ^                       chevron: there is a card above
    NIGHT HEART RATE             which card, small caps, muted
-   +2.4  bpm vs usual           the figure, Bitham 42 bold, card colour
-  [ YOUR BASELINE 52.1     ]    the pill: one comparison, black on yellow
-  [ 34 MIN ELEVATED TODAY  ]
-   Last night          54.5     bars: last three days, white tick = usual
-   ██████████|████
-   Yesterday           51.2
-   ████████████|██
-        v
+   +3.1  bpm vs floor           the figure, Bitham 42 bold
+  [ YOUR FLOOR 50.5        ]    the pill: one comparison, black on yellow
+  [ LOWEST NIGHTS OF 18    ]
+   3.1 off today's ten.         one plain line: what it cost, in points
+        v                       SELECT for sixty days and the read
 ```
 
 - **All text is white** (labels light grey). Colour never carries a word:
@@ -105,15 +121,18 @@ colour behind it.
   with the yellow pill. Per-card colours were tried in v0.7.2 and nothing
   else on the 64-colour panel is as legible; the card name at the top does
   the job colour was doing. Colour never says whether the news is good.
-- Bars are the comparison. Longer is more: more steps, more sleep, more HRV,
-  and on the heart-rate card more *reserve* (a lower night is a longer bar).
-  The white tick is your usual.
-- Trends is fourteen vertical bars with your baseline dashed across them.
+- Card fronts carry no history. Figure, pill, one plain line, and that is the
+  whole front. Three bar rows was the most a front could hold, which meant the
+  card spent two thirds of the screen on the least interesting window onto the
+  data; SELECT has room for thirty days instead.
+- Charts never auto-zoom onto noise. Every series declares a `min_span` — the
+  smallest difference allowed to fill the height — so 1.2 kg of water movement
+  is drawn as 1.2 kg rather than as the full card.
 - Nothing under Gothic 18. Titles are 18 bold caps, muted. The pill text is
   18 bold caps, black on yellow. Chevrons instead of dots.
-- SELECT gives a little more, not a lot: one graphic (a heart-rate area for
-  the night or the day, thirty days of bars for trends) and three or four
-  rows. Data is the one card that is a list, because diagnostics are a list.
+- SELECT gives a little more, not a lot: one graphic (a heart-rate area, or
+  thirty to sixty days of bars) and the rows behind it. Diagnostics live at
+  the bottom of the reading they explain, not in a card of their own.
 - Dark by default, light on long-press UP. Backlight held while open.
 
 ## Touch
@@ -136,17 +155,17 @@ things:
 
 | File | Purpose |
 |---|---|
-| `src/c/main.c` | Lifecycle, card navigation, detail window, feel prompt on launch |
-| `src/c/cards.c` | All drawing: seven main cards, detail views, the chart helper |
-| `src/c/headroom.c` | Night window, overnight RHR, baselines, drain, score, calibration |
-| `src/c/history.c` | One record per day in persistent storage; long baseline source |
-| `src/c/feel.c` | "How do you feel?" window |
+| `src/c/main.c` | Lifecycle, card navigation, detail window |
+| `src/c/cards.c` | All drawing: six main cards, detail views, the chart helpers |
+| `src/c/headroom.c` | Night window, overnight RHR, recovered floor, the score |
+| `src/c/history.c` | One record per day in persistent storage; source of the floor |
 | `src/c/hrv.c` | On-demand HRV test window and RMSSD/SDNN maths |
 | `src/c/theme.c` | Palette, per-card colours, dark/light, persisted |
 | `src/c/touch.c` | Touch navigation opt-in, optional gesture recognizers |
 | `src/c/common.h` | Persist keys and the cache schema number |
 
-`recovery.c`, `recovery.h`, `steps.c` and `steps.h` are gone. Delete them.
+`recovery.c`, `recovery.h`, `steps.c`, `steps.h`, `feel.c` and `feel.h` are
+gone. Delete them.
 
 ## Navigation
 
@@ -163,21 +182,16 @@ UP / DOWN        scroll, inside a detail view
 Cards other than Headroom can be turned off on the phone, and Metric is off
 until you pick something to track, so most people see fewer than this.
 
-| Card | Figure | Pill | Bars |
-|---|---|---|---|
-| **Headroom** | headroom 0–100 in a ring | the band | — (one sentence) |
-| **Night heart rate** | ± bpm vs usual | your baseline, minutes hard today | last 3 nights, tick = baseline |
-| **Sleep** | hours asleep | your usual, window | last 3 nights, tick = usual |
-| **Trend** | 7-day minus long-term | both averages, drift verdict | 21 nights, dashed long-term |
-| **HRV** | last test, ms | recent average | last 3 tests |
-| **Steps** | steps today | your goal, or your average day | today, yesterday, day before |
-| **Metric** | last value | change over four weeks | 28 days |
-| **Data** | confidence, 3 blocks | clean minutes, window source | — |
+| Card | Figure | Pill | Line | Behind SELECT |
+|---|---|---|---|---|
+| **Headroom** | 0–10 in a ring | the band | what the band means | the subtraction, confidence, 30 days |
+| **Night heart rate** | ± bpm vs your floor | your floor, nights it came from | what it cost | 60 days, week vs long-term, read diagnostics |
+| **Sleep** | hours asleep | your usual, window | what it cost | night curve, in bed / awake / sessions, 30 days |
+| **HRV** | last test, ms | recent average | not part of the score | 30 days, SDNN, beats dropped |
+| **Steps** | steps today | your goal, or your average day | over / to go | 7 days, today's HR curve and zones |
+| **Metric** | last value | change over four weeks | not part of the score | 60 days, weekly averages |
 
-On launch, if you have not been asked today, a one-screen prompt comes first:
-**How do you feel?** UP/DOWN across five states, SELECT to answer, BACK to
-skip. It is asked before the number is visible so the number cannot anchor
-the answer, and a skipped day is never asked again.
+There is no prompt on launch. The app opens on the number.
 
 Every card uses the same shape: figure, pill, bars. Nothing anywhere is
 smaller than 18 px.
@@ -194,14 +208,20 @@ says stop and none that says rest day.
 
 | Score | Band | Line |
 |---|---|---|
-| 90+ | Full send | top end is there |
-| 72–89 | Strong | hard work is fine |
-| 55–71 | Moderate | keep volume, back off the top end |
-| 40–54 | Aerobic | easy pace, technique, mobility |
-| < 40 | Easy movement | a walk, whatever feels good |
+| 10 | Full send | top end is there |
+| 8–9 | Strong | hard work is fine |
+| 6–7 | Moderate | keep volume, back off the top end |
+| 4–5 | Aerobic | easy pace, technique, mobility |
+| 0–3 | Easy movement | a walk, whatever feels good |
 
-A normal night on baseline lands at 88, i.e. Strong. Full send needs a night
-measurably better than your usual, which is the point.
+Bands are read off the printed digit, not the tenths behind it, so the word
+under the score can never contradict the number above it.
+
+A night at or under your recovered floor with normal sleep is a 10 and owes
+nothing. Because the floor is the lowest slice of your nights rather than their
+mean, roughly three nights in four sit above it, so a typical day reads 7–9 and
+a 10 is genuinely uncommon. That is the price of making the top of the scale
+mean something — under the old midpoint scale, 95+ was the normal case.
 
 ## Steps (v0.5: no filter)
 
@@ -214,22 +234,25 @@ with the same sleep-session lookup failing in the score path. There is no
 point shipping a filter whose output is provably identical to its input.
 
 If phantom steps show up later, the place to put it back is a rule that works
-on data whose units we understand. `HealthMinuteData.vmc` is not that yet —
-see the Data card.
+on data whose units we understand. `HealthMinuteData.vmc` is not that yet.
 
 ## The headroom score
 
-Computed once per morning and cached for the calendar day; the daytime part is
-recomputed every minute the app is open.
+Computed once per morning and cached for the calendar day. It does not change
+again until the next night is read: the daytime figures on the Steps detail
+refresh every minute the app is open, but none of them reach the score.
 
-**1. Find last night.** Three sources, best first, and the Recharge and Data
-cards both say which one was used:
+Three sources of the sleep window, then the trough, then the floor, then one
+subtraction. Each step below is also the order the code runs in.
+
+**1. Find last night.** Three sources, best first, and the Night heart rate
+detail says which one was used:
 
 | Source | What it is |
 |---|---|
 | `sleep sessions` | every `HealthActivitySleep` in the night, joined across gaps of ≤ 90 min |
-| `still stretch` | longest run of zero-step minutes, bridging trips of ≤ 15 steps |
-| `clock guess` | 23:00 onwards. Confidence capped at medium. |
+| `still stretch` | longest run of zero-step minutes, bridging trips of ≤ 15 steps. **Heart rate only** — never recorded as sleep. |
+| `clock guess` | 23:00 onwards. Confidence capped at medium. Heart rate only. |
 
 The search range is 18:00 yesterday to 12:00 today, anchored to the calendar
 rather than to `now`, so the answer does not depend on what time you open the
@@ -270,35 +293,77 @@ v0.4, so an existing baseline survives the upgrade.
 fresh install (or a reinstall that lost persist storage) `backfill()` reads
 the previous six nights, oldest first, before today's. Each becomes a
 `DayRecord` and feeds the baseline, so on the first launch you already have
-a week of bars on the heart-rate and sleep cards, seven bars on Trends, and
-a provisional score for today. A night that cannot be read is retried on the
-next three launches and then left alone; the Data detail shows "History
-readable N of M" so you can see it working. Nights before the seven-day
+a week of history behind SELECT and a provisional score for today. A night
+that cannot be read is retried on the next three launches and then left
+alone. Nights before the seven-day
 buffer cannot be recovered; after that, history accumulates as before.
 
 **Cold start.** Morning one shows the raw night — RHR and hours asleep — with
-no number, because the first night *is* the baseline. Morning two shows a
+no number, because the first night *is* the floor. Morning two shows a
 number. Until morning seven the Today card carries "Provisional: night N of
 7", confidence is capped at Low, and the detail view says why. Nothing is
-hidden; it is just labelled.
+hidden; it is just labelled. Until there are two readable nights to take a
+percentile of, the old EMA mean stands in as the floor.
 
-**4. Morning score** = 0.7 · heart-rate part + 0.3 · sleep part, each anchored
-at 88 for a night on baseline.
+**A stillness window is not sleep.** `window_from_quiet` counts missing minutes
+as quiet on purpose — a watch off your wrist is not evidence of walking — which
+is right for finding a heart-rate trough and wrong for recording sleep. v0.8
+filed the whole quiet stretch as a night's sleep, so a watch that spent day one
+in its box produced a 15-hour first night that then sat in every chart. Only
+`HealthActivitySleep` is recorded as sleep now, and only between 3 and 14
+hours.
 
-**5. Calibration.** Your morning answer maps to a target (Rough 35, Low 50,
-Okay 64, Good 80, Great 93 — band midpoints). The difference between target
-and morning score feeds an EMA (first answers weighted 1/n, then 0.25),
-clamped to ±15, and that offset is added to every score. Shown as "Your
-calibration" on the Today detail. If you keep saying Good on Moderate
-mornings, the number drifts up to meet you; the user is the ground truth.
+**4. The recovered floor.** The mean of the lowest 30% of readable nights in
+the last 60 days, read from stored `DayRecord`s from yesterday backwards, so
+tonight is never part of what tonight is measured against.
 
-**6. Intraday drain.** Minutes since waking, weighted by zone. Zone 3 counts
-once, zone 4 twice, zone 5 four times; below zone 3 nothing counts at all.
-Ten weighted minutes are free, then one point per six, capped at 20. A
-commute, the stairs and a full day at a desk score zero. It is silent — no
-notification ever — and tomorrow's overnight reading overrules it entirely.
+This is deliberately *not* the mean of your nights. A mean sits above your
+recovered heart rate by construction, because every drained night is in it.
+Concretely, on real data: a floor near 50.5, a recovered night at 50.4 and a
+post-session night at 53.6 — under a mean of 54.7 both nights read as "below
+baseline, so fine", and the session that the app exists to catch vanished. The
+lowest slice is what you look like with nothing owed, which is the only thing a
+deduction can sensibly be measured from. It also answers "my score must not
+climb forever": if you genuinely get fitter, the floor follows within a couple
+of months and 10 goes on meaning recovered.
 
-The zones sit on heart-rate reserve, Karvonen style, between two figures the
+**5. The score.** Ten points, minus what you owe. Nothing adds.
+
+```
+headroom = 10 − max(0, night_rhr − floor) × 1.0/bpm
+              − max(0, usual_sleep − 10 min − slept) × 2.0/hour   (cap 5)
+```
+
+Carried in tenths internally so a 0.6 bpm rise is not rounded away before the
+deductions are summed; printed as one digit. Below the floor earns nothing, and
+sleeping longer than usual earns nothing — there is no upside term at all, so
+the number cannot inflate. An unmeasured night's sleep costs zero rather than
+the maximum: the app does not know, and charging for what it does not know is
+the dishonesty §8 is about. It shows as reduced confidence instead.
+
+Worked, on real readings with a floor of 50.5 and a usual of 7h57:
+
+| Night | Slept | −HR | −sleep | Score | Band |
+|---|---|---|---|---|---|
+| 50.4 | 8h34 | 0.0 | 0.0 | 10.0 | Full send |
+| 53.6 | 8h34 | 3.1 | 0.0 | 6.9 | Moderate |
+| 53.6 | 6h57 | 3.1 | 1.6 | 5.3 | Aerobic |
+| 56.5 | 7h50 | 6.0 | 0.0 | 4.0 | Aerobic |
+
+**6. Nothing since waking is subtracted.** Daytime effort is still measured and
+shown on the Steps detail — zone minutes, peak, the heart-rate curve — but it
+does not touch the score. What a session cost is a question only tonight's
+reading can answer, and deducting an estimate of it during the day was the app
+modelling the *input* again, which is the thing §2 exists to stop doing. The
+practical effect is that the number does not sag through the afternoon.
+
+**Rescoring.** Every stored night is rescored against the floor as it stands
+today, in one pass over 90 records with no sensor work. The 30-day chart is
+therefore one consistent scale rather than a record of what each morning
+happened to believe at the time.
+
+The zones are no longer part of the score, but they are still measured and
+shown. They sit on heart-rate reserve, Karvonen style, between two figures the
 app measures rather than assumes:
 
 - **Waking rest** is the 20th percentile of daytime minutes with a reading
@@ -309,11 +374,14 @@ app measures rather than assumes:
 
 For a 68 bpm waking rest and a 185 bpm ceiling that puts zone 3 at 150, zone
 4 at 162 and zone 5 at 173. Both figures, and the resulting zone floors, are
-on the Night heart rate detail so the threshold can be checked against
-whatever else you use.
+on the Steps detail so the threshold can be checked against whatever else you
+use.
 
-**Why Drain read 433 minutes before v0.8.** The threshold was the sleeping
-baseline plus a fixed 25 bpm. But `baseline_rhr_x10` is a *trough* — the mean
+**Why Drain read 433 minutes before v0.8.** (Historical: the drain no longer
+reaches the score at all, but the zone thresholds it produced are still what
+the Steps detail draws, so the reasoning still applies to them.) The threshold
+was the sleeping baseline plus a fixed 25 bpm. But that baseline was a
+*trough* — the mean
 of the lowest 30% of readings inside the sleep window — and a person who
 troughs at 54.3 asleep sits at 66–72 at a desk. The line landed at 79, which
 standing up clears. Combined with `HR_HOLD_MIN` (each reading stands for the
@@ -341,28 +409,24 @@ hardware data. If overnight VMC on this watch is routinely above 60, that rule
 alone rejects the whole night and the Night card shows 0.0 bpm — which is
 exactly the symptom v0.4 had.
 
-The Data card now reports `VMC lo/avg/hi` across the minutes that survived, so
-the threshold can be set from real numbers instead of guessed. Set it a little
+`NightResult` still records `vmc_lo/avg/hi` across the minutes that survived,
+so the threshold can be set from real numbers instead of guessed. Set it a little
 above the high value, not below the average.
 
 We have guessed units on this hardware once already. Not again.
 
-## Reading the Data card
+## Reading a bad night
 
-If **clean readings** is zero, the largest of the four counters below it is the
-rule that caused it:
+There is no Data card. The night-read diagnostics live at the bottom of the
+**Night heart rate** detail, next to the reading they explain: clean readings,
+and the three rejection counts (no HR / out of range / jump rule). If clean
+readings is low, the largest of those three names the rule that dropped them.
+Confidence and the nights-learned count sit on the **Headroom** detail, where
+they qualify the number they are about.
 
-| Counter | Means | If it dominates |
-|---|---|---|
-| No reading | the minute had no heart rate at all | Pebble Health may not be sampling HR overnight — check `HR metric`, and the health settings on the watch |
-| Out of range | reading outside 35–110 bpm | widen `HR_MAX_NIGHT`, or the sensor is losing contact |
-| Motion gate | VMC above the threshold | only possible if you turned it on; lower it |
-| Jump rule | consecutive readings disagreeing by > 15 bpm | raise `HR_MAX_DELTA`, or the strap is loose |
-
-`Window from` tells you whether the sleep-session lookup worked. If it says
-`still stretch` or `clock guess` every morning, `health_service_activities_iterate`
-is returning nothing on this firmware and that is worth reporting upstream —
-it is the same lookup the old step filter depended on.
+Diagnostics as a destination was the mistake — a card you walk past every
+morning showing counts you cannot act on. They are still there; they are just
+no longer in the loop.
 
 ## Why we don't count steps ourselves (v0.3 finding, unchanged)
 
@@ -377,14 +441,19 @@ SDK export bug in the driver for the new IMU. Reported upstream. If it is
 fixed, the v0.3 `step_filter.c` in git history is the starting point, at the
 v0.1 thresholds (`LOCK_STEPS 6`, `PEAK_THRESH_MG 180`, `CADENCE_TOL_PCT 35`).
 
-## History and Trends
+## History
 
 Pebble Health keeps seven days of minute data; anything longer has to be
 ours. `history.c` keeps one 14-byte `DayRecord` per day — night RHR, sleep,
-morning score, confidence, feel, HRV, waking rest, peak HR — in five 252-byte
-persist chunks, 90 days in all, oldest dropped first. The night is written
-when it is analysed; feel, HRV, waking rest and peak are filled in during the
-day. Waking rest and peak are only written when they change, because
+morning score (now in tenths), confidence, HRV, waking rest, peak HR — in five
+252-byte persist chunks, 90 days in all, oldest dropped first. It is also what
+the recovered floor is computed from, which is why 90 days is the length it is.
+The night is written when it is analysed; HRV, waking rest and peak are filled
+in during the day.
+
+The `feel` byte is retained but no longer written. Removing it would have meant
+a schema bump and a migration for one spare byte, and the history is the one
+thing in the app worth more than tidiness. Waking rest and peak are only written when they change, because
 `day_analyse` runs once a minute while the app is open.
 
 `HIST_SCHEMA` guards the layout. Bumping it does **not** wipe the history —
@@ -405,14 +474,17 @@ that metric's own detail, never collected into a gallery elsewhere.
 
 Gaps are nights Roots could not read; a gap is drawn as a gap, never bridged.
 
-**The Trend card is not a trend gallery.** It shows drift and nothing else:
-the difference between the short and long baselines as the figure, both
-averages in the pill, 21 nights of bars behind them. The dashed line is the
-**long-term mean**, not `night.baseline_rhr_x10` — that baseline is a
-~14-night EMA, so it climbs with a training block and would sit level under
-the bars exactly when drift is happening, hiding the one thing the card
-exists to show. This is fixed in v0.8; before it, the reference line was the
-EMA.
+**Drift moved onto the Night heart rate detail.** It was a whole card for one
+comparison about night heart rate, which is a thing to read next to night heart
+rate, not a destination of its own. Sixty nights of bars with the recovered
+floor dashed across them, this week's mean and the long-term mean as rows, and
+a line about accumulated load only when the difference is real.
+
+The dashed reference is the **floor**, not a rolling mean. A mean climbs with a
+training block and would sit level under the bars exactly when drift is
+happening, hiding the one thing the chart exists to show. The floor is a low
+percentile over 60 days, so it resists the block on its own — which is also why
+this no longer needs a card to itself.
 
 **Drift.** Once there are three readable nights in the last week and fourteen
 in the 90 days before that, the card compares the two averages. A 7-day
@@ -452,8 +524,17 @@ protocol, every time — the value is in the trend, not the number.
 
 ## Tunables
 
-All at the top of `headroom.c`. Most likely to need attention after a week on
-real hardware: `MIN_CLEAN_MINUTES`, `HR_MAX_DELTA`, `HRR_Z3`, `REST_PCTILE`,
+All at the top of `headroom.c`. The score itself is four numbers:
+`RHR_COST_PER_BPM_X10` (10 = one point per bpm over the floor),
+`SLEEP_COST_PER_H_X10` (20 = two points per hour short),
+`SLEEP_COST_MAX_X10` (50 = sleep alone never takes more than half the ten) and
+`SLEEP_TOLERANCE_MIN` (10 = the deadband, set to what wrist sleep detection can
+actually resolve; it means an hour short of usual costs 1.7 points, not 2.0).
+The floor is `RECOVERED_PCT` / `RECOVERED_DAYS` — 60 days is long enough that a
+training block cannot drag the floor up with itself, short enough that real
+fitness gains move it within a couple of months.
+
+Most likely to need attention after a week on real hardware: `MIN_CLEAN_MINUTES`, `HR_MAX_DELTA`, `HRR_Z3`, `REST_PCTILE`,
 `HRMAX_FLOOR`, `HR_HOLD_MIN`, `STILL_VMC_MAX`. `HRR_Z3` is the one that
 decides what counts as work: 70 is the honest zone 2 ceiling, drop it toward
 60 if heavy lifting — where the peaks are brief — reads as zero too often. HRV protocol constants (`HRV_SETTLE_S`,
@@ -488,13 +569,23 @@ budget. That is why the tracked metric is one at a time.
 ## Known gaps / next steps
 
 - **Verify the HRV API shape on hardware** — see the open question above.
-- **Feel vs score agreement** — both series are on the Today detail now; the
-  next step is a single agreement figure on the Data card, which is the
-  product's actual quality metric.
+- **What replaces the feel loop as a quality metric** — removing the daily
+  prompt removed the only ground truth the app had, which was the right call
+  (it was gameable, and its mapping penalised an honest "Good") but it does
+  leave the question open. The honest candidates are behavioural rather than
+  self-reported: whether the sessions you actually complete on 9s and 10s
+  differ from the ones on 5s and 6s. That needs logged sessions, which §13
+  rules out. Worth sitting with unresolved rather than reaching for a worse
+  proxy.
+- **Validate the floor percentile** — 30% over 60 days is reasoned, not
+  measured. Too low and the floor tracks your single best night and everything
+  reads as a deduction; too high and it creeps back toward the mean and the
+  whole redesign unwinds. Check after a full training block.
 - **Zone floors on real data** — `HRR_Z3` at 70% of reserve is a reasonable
-  first guess, not a measured one. The Night heart rate detail shows the
-  waking rest, the ceiling and the resulting floors precisely so they can be
-  checked against a chest strap before the constant is trusted.
+  first guess, not a measured one. The Steps detail shows the waking rest, the
+  ceiling and the resulting floors precisely so they can be checked against a
+  chest strap before the constant is trusted. It no longer touches the score,
+  so a wrong value is now cosmetic rather than load-bearing.
 - **Touch** — see above.
 - **Wake-up** — the score is computed on open. A `wakeup` at your usual rise
   time could pre-compute it and drop a timeline pin.
